@@ -278,6 +278,17 @@ body.compact-mode .hot-bar    { display:none; }
 .kw-builtin { margin-top:22px; padding-top:16px; border-top:1px solid var(--b1); }
 .kw-builtin h3 { font-size:12px; color:var(--dim); margin-bottom:10px; }
 .kw-builtin .kw-tag { background:#1f1a10; border-color:#3a3020; color:#554433; pointer-events:none; }
+/* ─── 필터 카테고리 패널 ─── */
+.filter-cats-panel { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+.filter-cat-row { display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--bg2); border-radius:8px; border:1px solid var(--b1); }
+.filter-cat-emoji { font-size:17px; flex-shrink:0; width:22px; text-align:center; }
+.filter-cat-info  { flex:1; min-width:0; }
+.filter-cat-label { font-size:13px; font-weight:600; color:#ccc; }
+.filter-cat-desc  { font-size:11px; color:var(--muted); margin-top:2px; }
+.filter-cat-cnt   { font-size:12px; color:var(--accent); font-weight:700; flex-shrink:0; white-space:nowrap; }
+/* ─── 필터됨 칩 ─── */
+.filt-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#888; background:var(--bg2); border:1px solid var(--b1); border-radius:20px; padding:2px 9px; white-space:nowrap; }
+.filt-chip-n { color:var(--accent); font-weight:700; }
 
 /* ─── 즐겨찾기 ─── */
 .bm-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-size:13px; color:var(--muted); }
@@ -513,6 +524,7 @@ body.compact-mode .hot-bar    { display:none; }
             <div class="status-left">
                 <div class="dot" id="statusDot"></div>
                 <span id="statusTxt"></span>
+                <span class="filt-chip" id="filtChip" style="display:none">🔍 <span class="filt-chip-n" id="filtNum"></span>개 필터됨</span>
                 <button class="back-btn" id="backBtn" style="display:none" onclick="restoreTab()">← 목록으로</button>
             </div>
             <div class="status-right">
@@ -576,14 +588,8 @@ body.compact-mode .hot-bar    { display:none; }
             </div>
             <div class="kw-tags" id="kwTags"><span class="kw-empty">추가된 키워드가 없습니다.</span></div>
             <div class="kw-builtin">
-                <h3>기본 제외 키워드 (변경 불가)</h3>
-                <div class="kw-tags">
-                    <span class="kw-tag">대통령</span><span class="kw-tag">국회</span>
-                    <span class="kw-tag">민주당</span><span class="kw-tag">국민의힘</span>
-                    <span class="kw-tag">탄핵</span><span class="kw-tag">선거</span>
-                    <span class="kw-tag">야동</span><span class="kw-tag">성매매</span>
-                    <span class="kw-tag">자살</span><span class="kw-tag">마약</span>
-                </div>
+                <h3>서버 자동 필터 카테고리 (변경 불가)</h3>
+                <div class="filter-cats-panel" id="filterCatsPanel"><span class="kw-empty">로딩 중...</span></div>
             </div>
         </div>
     </div>
@@ -615,7 +621,7 @@ const PAGE_SIZE = 20;
 //  STATE
 // ═══════════════════════════════════════════════════
 let currentTab = 'yt', prevPostTab = 'humor';
-let rawPosts = {}, fetchedAt = {}, lastUrls = {};
+let rawPosts = {}, fetchedAt = {}, lastUrls = {}, filteredCounts = {};
 let isSearch = false, _shown = [], _renderOff = 0;
 let selIdx = -1, sortMode = 'default';
 let qfActive = false, qfStr = '';
@@ -801,7 +807,7 @@ function switchTab(tab) {
     hideAll();
     if(tab==='yt')       { document.getElementById('ytSection').style.display='block';       currentTab='yt';       loadYt(); }
     else if(tab==='patch')    { document.getElementById('patchSection').style.display='block';    currentTab='patch';    loadPatches(); }
-    else if(tab==='keywords') { document.getElementById('keywordsSection').style.display='block'; currentTab='keywords'; renderKW(); }
+    else if(tab==='keywords') { document.getElementById('keywordsSection').style.display='block'; currentTab='keywords'; renderKW(); loadFilterMeta(); }
     else if(tab==='suggest')  { document.getElementById('suggestSection').style.display='block';  currentTab='suggest';  loadSug(); }
     else if(tab==='bookmarks'){ document.getElementById('bookmarksSection').style.display='block'; currentTab='bookmarks'; renderBM(); }
     else {
@@ -879,6 +885,7 @@ async function loadTab(tab, force=false) {
             lastUrls[tab]=cur;
             rawPosts[tab]=data.posts.map(p=>({...p,source:tab}));
             fetchedAt[tab]=data.fetched_at;
+            filteredCounts[tab]=data.filtered||0;
             _shown=rawPosts[tab]; _stPosts+=rawPosts[tab].length;
             updateCntBadge(tab);
             const processed=process(rawPosts[tab]);
@@ -893,11 +900,12 @@ async function loadAllTab(force=false) {
     const results=await Promise.allSettled(sources.map(async src=>{
         const data=await(await fetch(`/api/${src}${force?'?refresh=1':''}`)).json();
         if(data.error) throw new Error(data.error);
-        rawPosts[src]=data.posts.map(p=>({...p,source:src})); fetchedAt[src]=data.fetched_at; updateCntBadge(src); return rawPosts[src];
+        rawPosts[src]=data.posts.map(p=>({...p,source:src})); fetchedAt[src]=data.fetched_at; filteredCounts[src]=data.filtered||0; updateCntBadge(src); return rawPosts[src];
     }));
     let all=[]; const seen=new Set();
     results.forEach(r=>{if(r.status==='fulfilled')r.value.forEach(p=>{if(!seen.has(p.url)){seen.add(p.url);all.push(p);}});});
     rawPosts['all']=all; _shown=all; _stPosts+=all.length;
+    filteredCounts['all']=sources.reduce((s,k)=>s+(filteredCounts[k]||0),0);
     const ok=results.filter(r=>r.status==='fulfilled').length;
     const processed=process(all); showPosts(processed,`${ok}개 소스 합산`,false); buildHotBar(processed);
 }
@@ -909,6 +917,9 @@ function showPosts(posts, label, isSrch) {
     stopSkeleton();
     document.getElementById('statusDot').className='dot'+(isSrch?' srch':'');
     document.getElementById('statusTxt').textContent=isSrch?`${label}  ·  ${posts.length}개`:`${posts.length}개  ·  ${label}`;
+    const fc=filteredCounts[currentTab]||0;
+    const chip=document.getElementById('filtChip');
+    if(fc>0){document.getElementById('filtNum').textContent=fc;chip.style.display='inline-flex';}else{chip.style.display='none';}
     document.getElementById('statusBar').style.display='flex';
     document.getElementById('backBtn').style.display=isSrch?'inline-block':'none';
     document.getElementById('emptyBox').style.display=posts.length?'none':'block';
@@ -1128,6 +1139,16 @@ function reapply(){if(!POST_TABS.includes(currentTab)||!_shown.length)return;con
 function addKW(){const kw=document.getElementById('kwInput').value.trim();if(!kw||excl.includes(kw)){document.getElementById('kwInput').focus();return;}excl.push(kw);saveExcl();document.getElementById('kwInput').value='';renderKW();reapply();toast(`"${kw}" 추가됨`);}
 function removeKW(kw){excl=excl.filter(k=>k!==kw);saveExcl();renderKW();reapply();toast(`"${kw}" 삭제됨`);}
 function renderKW(){const c=document.getElementById('kwTags');if(!excl.length){c.innerHTML='<span class="kw-empty">추가된 키워드가 없습니다.</span>';return;}c.innerHTML=excl.map(kw=>`<span class="kw-tag">${esc(kw)}<span class="kw-del" onclick="removeKW('${esc(kw)}')">×</span></span>`).join('');}
+let _fmLoaded=false;
+async function loadFilterMeta(){
+    if(_fmLoaded)return;
+    try{
+        const data=await fetch('/api/filter_meta').then(r=>r.json());
+        const panel=document.getElementById('filterCatsPanel');
+        panel.innerHTML=data.map(cat=>`<div class="filter-cat-row"><span class="filter-cat-emoji">${cat.emoji}</span><div class="filter-cat-info"><div class="filter-cat-label">${esc(cat.label)}</div><div class="filter-cat-desc">${esc(cat.desc)}</div></div><span class="filter-cat-cnt">${cat.count}개</span></div>`).join('');
+        _fmLoaded=true;
+    }catch(e){document.getElementById('filterCatsPanel').innerHTML='<span class="kw-empty">로드 실패</span>';}
+}
 
 // ═══════════════════════════════════════════════════
 //  INIT

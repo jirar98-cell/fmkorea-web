@@ -27,16 +27,100 @@ YOUTUBE_CHANNELS = [
 ]
 
 FILTER_KEYWORDS = {
-    "정치": ["대통령", "국회", "민주당", "국민의힘", "탄핵", "선거", "여당", "야당"],
-    "성적": ["야동", "성인", "19금", "야사", "섹스", "원조", "조건", "성매매", "몰카", "젖"],
-    "위해": ["자살", "자해", "폭발물", "테러", "마약", "살인", "폭행", "김세의", "장사의신"],
-    "스포츠": ["축구", "EPL", "K리그", "챔피언스리그", "손흥민", "이강인", "풋살", "프리미어리그", "라리가", "분데스리가",
-               "야구", "MLB", "KBO", "류현진", "오타니", "홈런", "삼성라이온즈", "두산베어스", "LG트윈스",
-               "농구", "NBA", "KBL", "배구", "V리그", "핸드볼", "키커", "선수"],
-    "게임": ["롤", "리그오브레전드", "오버워치", "배그", "배틀그라운드", "스타크래프트", "피파온라인", "LCK", "페이커"]
+    # 직접적 정치 용어
+    "정치": [
+        "대통령", "국회", "민주당", "국민의힘", "탄핵", "선거", "여당", "야당",
+        "국무총리", "장관", "차관", "국무회의", "당대표", "원내대표",
+        "공천", "경선", "정의당", "진보당", "개혁신당", "기본소득당",
+        "여의도", "청와대", "대통령실",
+    ],
+    # 정치인 이름 — 현직/전직 주요 정치인
+    "정치인": [
+        "이재명", "윤석열", "한동훈", "이준석", "나경원", "홍준표",
+        "안철수", "유승민", "김부겸", "이낙연", "박지원", "추미애",
+        "조국", "원희룡", "오세훈", "박형준", "이상민", "정청래",
+        "우상호", "박범계", "강기정", "류호정", "장제원", "김기현",
+        "노무현", "이명박", "박근혜", "문재인", "김대중",
+        "권성동", "박성준", "민형배", "신동근", "이소영", "이용우",
+        "김남국", "황운하", "김의겸", "최강욱", "고민정",
+        "윤희숙", "배현진", "태영호", "하태경", "주호영",
+    ],
+    # 법조/수사 — 뉴스성 정치 콘텐츠의 핵심 지표
+    "법조수사": [
+        "검찰", "기소", "구속", "구속영장", "재판", "판결", "수사",
+        "압수수색", "소환", "체포", "법원", "고발", "고소",
+        "피의자", "피고인", "검사", "영장청구",
+        "무죄", "유죄", "항소", "상고", "선고", "불기소",
+        "특검", "공수처",
+    ],
+    # 사회갈등 — 정치적 색채가 강한 사회 이슈
+    "사회갈등": [
+        "페미", "페미니즘", "남혐", "여혐", "젠더갈등", "젠더이슈",
+        "성차별", "미러링", "워마드", "메갈",
+        "반일", "친일", "혐중", "종북", "반미", "친미",
+        "이념갈등", "극우", "극좌", "좌파", "우파",
+    ],
+    # 뉴스 기사형 — 유머가 아닌 뉴스 헤드라인 지표
+    "뉴스기사": [
+        "단독", "속보", "긴급",
+        "의혹", "비리", "비위", "부패",
+        "사퇴", "사임", "경질", "해임", "임명",
+        "해명", "반박", "사과문",
+        "브리핑", "공식입장", "공식발표",
+    ],
+    "성적": [
+        "야동", "성인", "19금", "야사", "섹스", "원조", "조건",
+        "성매매", "몰카", "젖", "포르노", "음란",
+    ],
+    "위해": [
+        "자살", "자해", "폭발물", "테러", "마약", "살인", "폭행",
+        "김세의", "장사의신", "살해", "가스라이팅",
+    ],
+    "스포츠": [
+        "축구", "EPL", "K리그", "챔피언스리그", "손흥민", "이강인",
+        "풋살", "프리미어리그", "라리가", "분데스리가",
+        "야구", "MLB", "KBO", "류현진", "오타니", "홈런",
+        "삼성라이온즈", "두산베어스", "LG트윈스", "키움히어로즈",
+        "농구", "NBA", "KBL", "배구", "V리그", "핸드볼", "선수",
+    ],
+    "게임": [
+        "롤", "리그오브레전드", "오버워치", "배그", "배틀그라운드",
+        "스타크래프트", "피파온라인", "LCK", "페이커",
+        "발로란트", "로스트아크", "메이플", "던파",
+    ],
 }
+
+# 패턴 기반 필터 — 키워드로 못 잡는 뉴스 헤드라인 구조 탐지
+_FILTER_PATTERNS = [
+    # "여당/야당 ..." 구조
+    re.compile(r'(?:여당|야당|여야)\s'),
+    # "OO 장관/총리/의원이/가/은/는" 구조
+    re.compile(r'(?:장관|총리|의원|대표|위원장|청장|대변인)\s*(?:이|가|은|는|을|를|의)'),
+    # 정부 기관명이 주어인 문장
+    re.compile(r'(?:정부|국방부|외교부|법무부|기재부|행안부|교육부|보건복지부)\s*(?:이|가|은|는|,)'),
+    # 뉴스 속보 형식 [단독] [속보]
+    re.compile(r'^\s*(?:\[단독\]|\[속보\]|\[긴급\]|\[Breaking\])'),
+    # "~했다" 로 끝나는 뉴스 선언형 (단, 30자 이상인 긴 제목)
+    re.compile(r'^.{25,}(?:했다|한다|됐다|된다|밝혔다|주장했다|강조했다|비판했다)[.…]?\s*$'),
+    # 따옴표 인용 포함 (정치인 발언 인용)
+    re.compile(r'["""][가-힣\s]{5,}["""].*(?:했|한|가|이|은|는)'),
+]
+
 SKIP_TITLES = ["전체 삭제", "공지", "규정", "금지", "차단", "신고", "불만글"]
 CACHE_TTL = 300
+
+# 필터 카테고리 메타데이터 (프론트에 노출)
+FILTER_CATEGORY_META = {
+    "정치":    {"label": "정치 용어",     "emoji": "🏛",  "desc": "여당·야당·선거·탄핵 등"},
+    "정치인":  {"label": "정치인 이름",   "emoji": "👤",  "desc": "현직·전직 주요 정치인"},
+    "법조수사":{"label": "법조·수사",     "emoji": "⚖️",  "desc": "검찰·재판·구속·판결 등"},
+    "사회갈등":{"label": "사회 갈등",     "emoji": "🔥",  "desc": "페미·젠더·반일·이념 갈등"},
+    "뉴스기사":{"label": "뉴스 기사형",   "emoji": "📰",  "desc": "단독·속보·의혹·사퇴 등"},
+    "성적":    {"label": "성인·선정",     "emoji": "🔞",  "desc": "성적 콘텐츠"},
+    "위해":    {"label": "위해·혐오",     "emoji": "⛔",  "desc": "자해·폭력·테러·마약"},
+    "스포츠":  {"label": "스포츠",        "emoji": "⚽",  "desc": "축구·야구·농구 등"},
+    "게임":    {"label": "게임",          "emoji": "🎮",  "desc": "롤·오버워치·배그 등"},
+}
 
 _HAS_ENGLISH = re.compile(r'[a-zA-Z]')
 _KST = timezone(timedelta(hours=9))
@@ -81,7 +165,25 @@ def is_filtered(title):
         for kw in keywords:
             if kw in title:
                 return True
+    for pat in _FILTER_PATTERNS:
+        if pat.search(title):
+            return True
     return False
+
+
+def filter_reason(title):
+    """필터 적용 이유 반환 (디버깅/통계용)"""
+    for skip in SKIP_TITLES:
+        if skip in title:
+            return f"skip:{skip}"
+    for cat, keywords in FILTER_KEYWORDS.items():
+        for kw in keywords:
+            if kw in title:
+                return f"{cat}:{kw}"
+    for i, pat in enumerate(_FILTER_PATTERNS):
+        if pat.search(title):
+            return f"pattern:{i}"
+    return None
 
 
 def is_korean_only(title):
@@ -140,6 +242,7 @@ async def _scrape_page(browser, url, extra_filter=None):
 
     soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
+    filtered_count = 0
     for row in soup.select("table.bd_lst tr"):
         title_el = row.select_one("td.title a")
         if not title_el:
@@ -154,6 +257,7 @@ async def _scrape_page(browser, url, extra_filter=None):
             continue
         seen.add(href)
         if is_filtered(title):
+            filtered_count += 1
             continue
         if extra_filter and not extra_filter(title):
             continue
@@ -175,14 +279,14 @@ async def _scrape_page(browser, url, extra_filter=None):
         except ValueError:
             voted_num = 0
 
-        if voted_num < 10:
+        if voted_num < 15:
             continue
 
         results.append({
             "title": title, "url": href, "date": time_text,
             "views": views_text, "recommend": voted_text,
         })
-    return results
+    return results, filtered_count
 
 
 async def _scrape(url, extra_filter=None, pages=1):
@@ -190,12 +294,16 @@ async def _scrape(url, extra_filter=None, pages=1):
     page_urls = [url if pg == 1 else f"{url}?page={pg}" for pg in range(1, pages + 1)]
     pages_data = await asyncio.gather(*[_scrape_page(browser, u, extra_filter) for u in page_urls])
     results, seen = [], set()
-    for page_posts in pages_data:
+    total_filtered = 0
+    for page_result in pages_data:
+        page_posts, fc = page_result
+        total_filtered += fc
         for post in page_posts:
             if post["url"] not in seen:
                 seen.add(post["url"])
                 results.append(post)
-    return results
+    # filtered_count는 캐시 메타에 저장
+    return results, total_filtered
 
 
 _refreshing = set()
@@ -204,13 +312,15 @@ _refreshing = set()
 def _do_refresh_async(key, url, extra_filter, async_fn):
     try:
         if async_fn is not None:
-            posts = _run_async(async_fn())
+            result = _run_async(async_fn())
         else:
-            posts = _run_async(_scrape(url, extra_filter))
+            result = _run_async(_scrape(url, extra_filter))
+        posts, filtered = result if isinstance(result, tuple) else (result, 0)
         now = time.time()
         with _lock:
             _cache[key] = {
                 "posts": posts,
+                "filtered": filtered,
                 "timestamp": now,
                 "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
             }
@@ -225,6 +335,7 @@ def _do_refresh_sync(key, fetcher):
         with _lock:
             _cache[key] = {
                 "posts": posts,
+                "filtered": 0,
                 "timestamp": now,
                 "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
             }
@@ -238,25 +349,27 @@ def get_cached(key, url=None, force=False, extra_filter=None, async_fn=None):
         now = time.time()
         fresh = not force and cached.get("timestamp", 0) and now - cached["timestamp"] < CACHE_TTL
         if fresh:
-            return cached["posts"], cached["fetched_at"]
+            return cached["posts"], cached["fetched_at"], cached.get("filtered", 0)
         if cached.get("posts") and key not in _refreshing:
             _refreshing.add(key)
             t = threading.Thread(target=_do_refresh_async, args=(key, url, extra_filter, async_fn), daemon=True)
             t.start()
-            return cached["posts"], cached["fetched_at"] + " (갱신 중)"
+            return cached["posts"], cached["fetched_at"] + " (갱신 중)", cached.get("filtered", 0)
     if async_fn is not None:
-        posts = _run_async(async_fn())
+        result = _run_async(async_fn())
     else:
-        posts = _run_async(_scrape(url, extra_filter))
+        result = _run_async(_scrape(url, extra_filter))
+    posts, filtered = result if isinstance(result, tuple) else (result, 0)
     now = time.time()
     with _lock:
         _cache[key] = {
             "posts": posts,
+            "filtered": filtered,
             "timestamp": now,
             "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
         }
         _refreshing.discard(key)
-    return posts, _cache[key]["fetched_at"]
+    return posts, _cache[key]["fetched_at"], filtered
 
 
 def get_cached_sync(key, fetcher, force=False):
@@ -265,22 +378,23 @@ def get_cached_sync(key, fetcher, force=False):
         now = time.time()
         fresh = not force and cached.get("timestamp", 0) and now - cached["timestamp"] < CACHE_TTL
         if fresh:
-            return cached["posts"], cached["fetched_at"]
+            return cached["posts"], cached["fetched_at"], cached.get("filtered", 0)
         if cached.get("posts") and key not in _refreshing:
             _refreshing.add(key)
             t = threading.Thread(target=_do_refresh_sync, args=(key, fetcher), daemon=True)
             t.start()
-            return cached["posts"], cached["fetched_at"] + " (갱신 중)"
+            return cached["posts"], cached["fetched_at"] + " (갱신 중)", cached.get("filtered", 0)
     posts = fetcher()
     now = time.time()
     with _lock:
         _cache[key] = {
             "posts": posts,
+            "filtered": 0,
             "timestamp": now,
             "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
         }
         _refreshing.discard(key)
-    return posts, _cache[key]["fetched_at"]
+    return posts, _cache[key]["fetched_at"], 0
 
 
 def fetch_thumb(post_url):
@@ -472,8 +586,8 @@ def index():
 def api_humor():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=10))
-        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+        posts, fetched_at, filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=10))
+        return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -482,8 +596,8 @@ def api_humor():
 def api_udt():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at = get_cached_sync("udt", _fetch_ohmyhumor, force)
-        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+        posts, fetched_at, filtered = get_cached_sync("udt", _fetch_ohmyhumor, force)
+        return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -492,8 +606,8 @@ def api_udt():
 def api_dc():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at = get_cached("dc", force=force, async_fn=_scrape_arca)
-        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+        posts, fetched_at, filtered = get_cached("dc", force=force, async_fn=_scrape_arca)
+        return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -502,8 +616,8 @@ def api_dc():
 def api_reddit():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at = get_cached_sync("reddit", _fetch_reddit, force)
-        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+        posts, fetched_at, filtered = get_cached_sync("reddit", _fetch_reddit, force)
+        return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -513,8 +627,8 @@ def api_reddit():
 def api_patch():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at = get_cached("patch", PATCH_URL, force, extra_filter=is_korean_only)
-        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+        posts, fetched_at, filtered = get_cached("patch", PATCH_URL, force, extra_filter=is_korean_only)
+        return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -526,8 +640,9 @@ def api_search():
         return jsonify({"error": "검색어를 입력해주세요."}), 400
     try:
         url = f"https://www.fmkorea.com/search.php?query={quote(query)}&st=title&sn=off&ss=on&so=r"
-        posts = _run_async(_scrape(url))
-        return jsonify({"posts": posts, "count": len(posts), "query": query})
+        result = _run_async(_scrape(url))
+        posts, filtered = result if isinstance(result, tuple) else (result, 0)
+        return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "query": query})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -537,6 +652,31 @@ def api_patches():
     path = os.path.join(os.path.dirname(__file__), "patches.json")
     with open(path, encoding="utf-8") as f:
         return jsonify(json.load(f))
+
+
+@app.route("/api/filter_meta")
+def api_filter_meta():
+    """필터 카테고리 메타데이터 + 현재 적용 중인 키워드 수 반환"""
+    result = []
+    for cat, meta in FILTER_CATEGORY_META.items():
+        kws = FILTER_KEYWORDS.get(cat, [])
+        result.append({
+            "id":      cat,
+            "label":   meta["label"],
+            "emoji":   meta["emoji"],
+            "desc":    meta["desc"],
+            "count":   len(kws),
+            "keywords": kws,
+        })
+    result.append({
+        "id":      "pattern",
+        "label":   "패턴 탐지",
+        "emoji":   "🔍",
+        "desc":    "뉴스 헤드라인 구조 자동 탐지 (regex)",
+        "count":   len(_FILTER_PATTERNS),
+        "keywords": [],
+    })
+    return jsonify(result)
 
 
 _SUGGEST_PATH = os.path.join(os.path.dirname(__file__), "suggestions.json")
@@ -642,7 +782,7 @@ def _fetch_all_yt():
 def api_yt_channels():
     try:
         force = request.args.get("refresh") == "1"
-        channels, fetched_at = get_cached_sync("yt_channels", _fetch_all_yt, force)
+        channels, fetched_at, _ = get_cached_sync("yt_channels", _fetch_all_yt, force)
         return jsonify({"channels": channels, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -651,10 +791,12 @@ def api_yt_channels():
 def _prewarm():
     time.sleep(1)
     try:
-        posts = _run_async(_scrape(HUMOR_URL, pages=3))
+        result = _run_async(_scrape(HUMOR_URL, pages=3))
+        posts, filtered = result if isinstance(result, tuple) else (result, 0)
         with _lock:
             _cache["humor"] = {
                 "posts": posts,
+                "filtered": filtered,
                 "timestamp": time.time(),
                 "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
             }
