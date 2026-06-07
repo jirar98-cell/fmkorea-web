@@ -109,7 +109,7 @@ async def _ensure_browser():
         except Exception:
             pass
     _pw = await async_playwright().start()
-    _browser = await _pw.chromium.launch()
+    _browser = await _pw.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
     return _browser
 
 
