@@ -109,7 +109,12 @@ async def _ensure_browser():
         except Exception:
             pass
     _pw = await async_playwright().start()
-    _browser = await _pw.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
+    _browser = await _pw.chromium.launch(args=[
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+    ])
     return _browser
 
 
@@ -611,7 +616,7 @@ def api_yt_channels():
 def _prewarm():
     time.sleep(1)
     try:
-        posts = _run_async(_scrape(HUMOR_URL, pages=50))
+        posts = _run_async(_scrape(HUMOR_URL, pages=3))
         with _lock:
             _cache["humor"] = {
                 "posts": posts,
