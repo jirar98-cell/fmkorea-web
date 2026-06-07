@@ -428,6 +428,41 @@ def _fetch_reddit():
     return posts
 
 
+_MANIFEST = {
+    "name": "인생은 개딸깍",
+    "short_name": "개딸깍",
+    "description": "펨코·오유·아카라이브 유머 큐레이션",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f0f0f",
+    "theme_color": "#0f0f0f",
+    "orientation": "portrait-primary",
+    "categories": ["entertainment", "news"],
+    "lang": "ko",
+}
+
+
+@app.route("/manifest.json")
+def serve_manifest():
+    from flask import Response
+    return Response(json.dumps(_MANIFEST, ensure_ascii=False), mimetype="application/manifest+json")
+
+
+@app.route("/sw.js")
+def serve_sw():
+    return app.send_static_file("sw.js")
+
+
+@app.route("/api/health")
+def api_health():
+    with _lock:
+        cache_info = {
+            k: {"count": len(v.get("posts", [])), "age_sec": int(time.time() - v.get("timestamp", 0))}
+            for k, v in _cache.items()
+        }
+    return jsonify({"status": "ok", "cache": cache_info, "ts": datetime.now().isoformat()})
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
