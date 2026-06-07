@@ -504,6 +504,8 @@ _suggest_lock = threading.Lock()
 
 
 def _load_suggestions():
+    if not os.path.exists(_SUGGEST_PATH):
+        return []
     with open(_SUGGEST_PATH, encoding="utf-8") as f:
         return json.load(f)
 
@@ -622,4 +624,5 @@ def _prewarm():
 threading.Thread(target=_prewarm, daemon=True).start()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

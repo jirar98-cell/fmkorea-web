@@ -1,3 +1,5 @@
 flask
 playwright
 beautifulsoup4
+requests
+gunicorn
