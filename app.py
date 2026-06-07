@@ -158,7 +158,7 @@ _score_cache: dict = {}
 _score_lock = threading.Lock()
 
 try:
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if os.environ.get("GROQ_API_KEY"):
         from shorts_filter import score_material as _score_fn  # type: ignore
         _sf_available = True
 except Exception as _sf_err:
