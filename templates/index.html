@@ -290,6 +290,18 @@ body.compact-mode .hot-bar    { display:none; }
 .filt-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#888; background:var(--bg2); border:1px solid var(--b1); border-radius:20px; padding:2px 9px; white-space:nowrap; }
 .filt-chip-n { color:var(--accent); font-weight:700; }
 
+/* ─── AI 채점 ─── */
+.ai-btn { background:var(--bg2); border:1px solid var(--b1); color:#888; border-radius:20px; padding:5px 11px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap; transition:all .15s; }
+.ai-btn.on  { background:#0d2010; border-color:#3a7020; color:#7ec850; }
+.ai-btn:disabled { opacity:.4; cursor:not-allowed; }
+.ai-slot { margin-top:5px; display:flex; flex-direction:column; gap:2px; }
+.ai-spin { color:var(--dim); font-size:11px; animation:aipulse 1s infinite; }
+@keyframes aipulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+.ai-badge { display:inline-flex; align-items:center; gap:5px; border-radius:12px; padding:2px 9px; font-size:11px; font-weight:700; width:fit-content; }
+.ai-pass   { background:#0d2010; color:#7ec850; border:1px solid #2a5a15; }
+.ai-review { background:#1f1a08; color:#f4c842; border:1px solid #5a4215; }
+.ai-one { color:var(--muted); font-size:11px; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+
 /* ─── 즐겨찾기 ─── */
 .bm-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-size:13px; color:var(--muted); }
 .bm-clear { background:none; border:1px solid #3a2020; color:#c0392b; padding:4px 12px; border-radius:8px; font-size:12px; cursor:pointer; font-family:inherit; }
@@ -493,6 +505,7 @@ body.compact-mode .hot-bar    { display:none; }
                 <div id="shItems"><div class="sh-empty">검색 기록이 없습니다</div></div>
             </div>
         </div>
+        <button class="ai-btn" id="aiBtn" onclick="toggleAI()" title="AI 소재 채점 켜기/끄기">🤖 AI</button>
         <button class="icon-btn" id="refreshBtn" onclick="refreshCurrent()" title="새로고침 (r)">⟳</button>
         <button class="icon-btn" onclick="openSettings()" title="설정">⚙</button>
     </div>
@@ -624,6 +637,7 @@ let currentTab = 'yt', prevPostTab = 'humor';
 let rawPosts = {}, fetchedAt = {}, lastUrls = {}, filteredCounts = {};
 let isSearch = false, _shown = [], _renderOff = 0;
 let selIdx = -1, sortMode = 'default';
+let aiMode = false, _aiRunId = 0;
 let qfActive = false, qfStr = '';
 let _loadTmr = null, _autoTmr = null, _autoLeft = 0;
 let _pwaPrompt = null, _newFirstIdx = -1;
@@ -942,7 +956,7 @@ function makeCard(p, i) {
     return `<a class="post-card${visCls}" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" data-i="${i}" onclick="onCardClick(this)">
         <span class="post-num">${i+1}</span>
         <div class="thumb-wrap" id="tw-${i}"><img class="thumb-img" id="ti-${i}" alt=""></div>
-        <div class="post-wrap"><div class="post-row">${srcB}${newB}<span class="post-title">${esc(p.title)}</span></div>${meta?`<div class="post-meta">${meta}</div>`:''}</div>
+        <div class="post-wrap"><div class="post-row">${srcB}${newB}<span class="post-title">${esc(p.title)}</span></div>${meta?`<div class="post-meta">${meta}</div>`:''}<div class="ai-slot" id="ai-${i}"></div></div>
         <div class="post-acts">
             <button class="act" title="공유" onclick="doShare(event,${i})">⤴</button>
             <button class="act" title="복사" onclick="doCopy(event,${i})">⎘</button>
@@ -950,7 +964,7 @@ function makeCard(p, i) {
         </div>
     </a>`;
 }
-function renderCards(posts, isSrch) { document.getElementById('postList').innerHTML=posts.map((p,i)=>makeCard(p,i)).join(''); }
+function renderCards(posts, isSrch) { document.getElementById('postList').innerHTML=posts.map((p,i)=>makeCard(p,i)).join(''); if(aiMode) applyAIFilter(); }
 function loadMore() {
     const posts=process(_shown), next=posts.slice(_renderOff,_renderOff+PAGE_SIZE);
     if(!next.length){document.getElementById('loadMoreBtn').classList.remove('on');return;}
@@ -1139,6 +1153,67 @@ function reapply(){if(!POST_TABS.includes(currentTab)||!_shown.length)return;con
 function addKW(){const kw=document.getElementById('kwInput').value.trim();if(!kw||excl.includes(kw)){document.getElementById('kwInput').focus();return;}excl.push(kw);saveExcl();document.getElementById('kwInput').value='';renderKW();reapply();toast(`"${kw}" 추가됨`);}
 function removeKW(kw){excl=excl.filter(k=>k!==kw);saveExcl();renderKW();reapply();toast(`"${kw}" 삭제됨`);}
 function renderKW(){const c=document.getElementById('kwTags');if(!excl.length){c.innerHTML='<span class="kw-empty">추가된 키워드가 없습니다.</span>';return;}c.innerHTML=excl.map(kw=>`<span class="kw-tag">${esc(kw)}<span class="kw-del" onclick="removeKW('${esc(kw)}')">×</span></span>`).join('');}
+// ═══════════════════════════════════════════════════
+//  AI 채점
+// ═══════════════════════════════════════════════════
+async function toggleAI() {
+    const btn = document.getElementById('aiBtn');
+    if (!aiMode) {
+        try {
+            const d = await fetch('/api/score_available').then(r=>r.json());
+            if (!d.available) { toast('ANTHROPIC_API_KEY 미설정 — AI 채점 불가','err'); return; }
+        } catch { toast('서버 연결 실패','err'); return; }
+    }
+    aiMode = !aiMode;
+    btn.classList.toggle('on', aiMode);
+    btn.textContent = aiMode ? '🤖 AI 켜짐' : '🤖 AI';
+    if (aiMode) { applyAIFilter(); }
+    else { clearAIFilter(); }
+}
+
+function clearAIFilter() {
+    _aiRunId++;
+    document.querySelectorAll('#postList .post-card').forEach(el => {
+        el.style.display = '';
+        const slot = el.querySelector('.ai-slot');
+        if (slot) slot.innerHTML = '';
+    });
+}
+
+async function applyAIFilter() {
+    const runId = ++_aiRunId;
+    const cards = Array.from(document.querySelectorAll('#postList .post-card'));
+    // 로딩 스피너 먼저
+    cards.forEach(el => {
+        const slot = el.querySelector('.ai-slot');
+        if (slot) slot.innerHTML = '<span class="ai-spin">⏳ AI 채점 중...</span>';
+    });
+    // 카드 하나씩 순서대로 채점
+    for (const el of cards) {
+        if (_aiRunId !== runId) return; // 취소됨
+        const i = parseInt(el.getAttribute('data-i'));
+        const p = _shown[i];
+        if (!p) continue;
+        const slot = el.querySelector('.ai-slot');
+        try {
+            const params = new URLSearchParams({title: p.title, url: p.url || ''});
+            const d = await fetch(`/api/score?${params}`).then(r=>r.json());
+            if (_aiRunId !== runId) return;
+            if (d.error) { if(slot) slot.innerHTML=`<span class="ai-spin">${esc(d.error)}</span>`; continue; }
+            const verdict = d.verdict || 'review';
+            if (verdict === 'drop') {
+                el.style.display = 'none';
+            } else {
+                const cls  = verdict==='pass' ? 'ai-pass' : 'ai-review';
+                const icon = verdict==='pass' ? '✅ pass' : '👀 review';
+                const sc   = `훅 ${d.hook_score??'?'}·톤 ${d.tone_fit??'?'}·사실 ${d.fact_confidence??'?'}`;
+                const liner = d.one_liner ? `<div class="ai-one">"${esc(d.one_liner)}"</div>` : '';
+                if (slot) slot.innerHTML = `<span class="ai-badge ${cls}">${icon} &nbsp;${sc}</span>${liner}`;
+            }
+        } catch { if (slot) slot.innerHTML = ''; }
+    }
+}
+
 let _fmLoaded=false;
 async function loadFilterMeta(){
     if(_fmLoaded)return;

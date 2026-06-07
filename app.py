@@ -151,6 +151,19 @@ _cache = {}
 _thumb_cache = {}
 _lock = threading.Lock()
 
+# ─── AI 소재 채점 (shorts_filter) ───────────────────────────
+_sf_available = False
+_score_fn = None
+_score_cache: dict = {}
+_score_lock = threading.Lock()
+
+try:
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from shorts_filter import score_material as _score_fn  # type: ignore
+        _sf_available = True
+except Exception as _sf_err:
+    pass
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
     "Referer": "https://www.fmkorea.com",
@@ -719,6 +732,33 @@ def api_suggestions_post():
         data.insert(0, entry)
         _save_suggestions(data)
     return jsonify(entry), 201
+
+
+@app.route("/api/score_available")
+def api_score_available():
+    return jsonify({"available": _sf_available})
+
+
+@app.route("/api/score")
+def api_score():
+    title = request.args.get("title", "").strip()
+    url   = request.args.get("url",   "").strip()
+    use_search = request.args.get("search", "0") == "1"
+    if not _sf_available:
+        return jsonify({"error": "ANTHROPIC_API_KEY 미설정 — AI 채점 불가"}), 503
+    if not title:
+        return jsonify({"error": "title 필요"}), 400
+    cache_key = f"{title}|{use_search}"
+    with _score_lock:
+        if cache_key in _score_cache:
+            return jsonify(_score_cache[cache_key])
+    try:
+        result = _score_fn(title=title, content="", url=url or None, use_search=use_search)
+        with _score_lock:
+            _score_cache[cache_key] = result
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/thumb")
