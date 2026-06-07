@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "PowerShell",
+      "Bash",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
+    ]
+  }
+}

@@ -1,0 +1,625 @@
+import asyncio
+import json
+import os
+import re
+import time
+import threading
+from datetime import datetime, timezone, timedelta
+from urllib.parse import quote
+
+import requests as req_lib
+from flask import Flask, render_template, jsonify, request
+from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
+
+app = Flask(__name__)
+
+HUMOR_URL  = "https://www.fmkorea.com/humor"
+PATCH_URL  = "https://www.fmkorea.com/search.php?query=패치노트&st=title&sn=off&ss=on&so=r"
+OHMYHUMOR_URL = "http://www.todayhumor.co.kr/board/list.php?table=bestofbest"
+REDDIT_URL    = "https://www.reddit.com/r/funny/hot.json"
+ARCA_URL      = "https://arca.live/b/humor"
+
+YOUTUBE_CHANNELS = [
+    {"handle": "@humor_zoo",  "label": "humor_zoo",  "shorts": True},
+    {"handle": "@humorfarm",  "label": "humorfarm",  "shorts": False},
+    {"handle": "@puppyd5g",   "label": "puppyd5g",   "shorts": True},
+]
+
+FILTER_KEYWORDS = {
+    "정치": ["대통령", "국회", "민주당", "국민의힘", "탄핵", "선거", "여당", "야당"],
+    "성적": ["야동", "성인", "19금", "야사", "섹스", "원조", "조건", "성매매", "몰카", "젖"],
+    "위해": ["자살", "자해", "폭발물", "테러", "마약", "살인", "폭행", "김세의", "장사의신"],
+    "스포츠": ["축구", "EPL", "K리그", "챔피언스리그", "손흥민", "이강인", "풋살", "프리미어리그", "라리가", "분데스리가",
+               "야구", "MLB", "KBO", "류현진", "오타니", "홈런", "삼성라이온즈", "두산베어스", "LG트윈스",
+               "농구", "NBA", "KBL", "배구", "V리그", "핸드볼", "키커", "선수"],
+    "게임": ["롤", "리그오브레전드", "오버워치", "배그", "배틀그라운드", "스타크래프트", "피파온라인", "LCK", "페이커"]
+}
+SKIP_TITLES = ["전체 삭제", "공지", "규정", "금지", "차단", "신고", "불만글"]
+CACHE_TTL = 300
+
+_HAS_ENGLISH = re.compile(r'[a-zA-Z]')
+_KST = timezone(timedelta(hours=9))
+
+
+def _relative_time(time_text):
+    if not time_text:
+        return ""
+    try:
+        if ":" in time_text and len(time_text) == 5:
+            h, m = map(int, time_text.split(":"))
+            now = datetime.now(_KST)
+            post_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if post_dt > now:
+                post_dt -= timedelta(days=1)
+            diff_min = int((now - post_dt).total_seconds() / 60)
+            if diff_min < 1:
+                return "방금 전"
+            if diff_min < 60:
+                return f"{diff_min}분 전"
+            h_ago = diff_min // 60
+            return f"{h_ago}시간 전"
+        return time_text
+    except Exception:
+        return time_text
+
+_cache = {}
+_thumb_cache = {}
+_lock = threading.Lock()
+
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+    "Referer": "https://www.fmkorea.com",
+}
+
+
+def is_filtered(title):
+    for skip in SKIP_TITLES:
+        if skip in title:
+            return True
+    for keywords in FILTER_KEYWORDS.values():
+        for kw in keywords:
+            if kw in title:
+                return True
+    return False
+
+
+def is_korean_only(title):
+    return not _HAS_ENGLISH.search(title)
+
+
+_loop = asyncio.new_event_loop()
+threading.Thread(target=_loop.run_forever, daemon=True).start()
+
+_pw = None
+_browser = None
+
+
+async def _ensure_browser():
+    global _pw, _browser
+    if _browser is not None:
+        try:
+            if _browser.is_connected():
+                return _browser
+        except Exception:
+            pass
+    if _pw:
+        try:
+            await _pw.stop()
+        except Exception:
+            pass
+    _pw = await async_playwright().start()
+    _browser = await _pw.chromium.launch()
+    return _browser
+
+
+def _run_async(coro):
+    return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=60)
+
+
+async def _scrape_page(browser, url, extra_filter=None):
+    page = await browser.new_page()
+    async def handle_route(route):
+        if route.request.resource_type in ("image", "font", "media", "stylesheet"):
+            await route.abort()
+        else:
+            await route.continue_()
+    await page.route("**/*", handle_route)
+    await page.goto(url, wait_until="domcontentloaded")
+    try:
+        await page.wait_for_selector("table.bd_lst tr", timeout=4000)
+    except Exception:
+        pass
+    html = await page.content()
+    await page.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    results, seen = [], set()
+    for row in soup.select("table.bd_lst tr"):
+        title_el = row.select_one("td.title a")
+        if not title_el:
+            continue
+        title = title_el.get_text(strip=True)
+        href = title_el.get("href", "")
+        if not title or len(title) < 3:
+            continue
+        if href and not href.startswith("http"):
+            href = "https://www.fmkorea.com" + href
+        if href in seen:
+            continue
+        seen.add(href)
+        if is_filtered(title):
+            continue
+        if extra_filter and not extra_filter(title):
+            continue
+
+        time_cell = row.select_one("td.time")
+        time_text = _relative_time(time_cell.get_text(strip=True)) if time_cell else ""
+
+        views_text = ""
+        for td in row.select("td.m_no"):
+            if "m_no_voted" not in (td.get("class") or []):
+                views_text = td.get_text(strip=True)
+                break
+
+        voted_cell = row.select_one("td.m_no_voted")
+        voted_text = voted_cell.get_text(strip=True) if voted_cell else ""
+
+        try:
+            voted_num = int(voted_text.replace(",", "")) if voted_text else 0
+        except ValueError:
+            voted_num = 0
+
+        if voted_num < 10:
+            continue
+
+        results.append({
+            "title": title, "url": href, "date": time_text,
+            "views": views_text, "recommend": voted_text,
+        })
+    return results
+
+
+async def _scrape(url, extra_filter=None, pages=1):
+    browser = await _ensure_browser()
+    page_urls = [url if pg == 1 else f"{url}?page={pg}" for pg in range(1, pages + 1)]
+    pages_data = await asyncio.gather(*[_scrape_page(browser, u, extra_filter) for u in page_urls])
+    results, seen = [], set()
+    for page_posts in pages_data:
+        for post in page_posts:
+            if post["url"] not in seen:
+                seen.add(post["url"])
+                results.append(post)
+    return results
+
+
+_refreshing = set()
+
+
+def _do_refresh_async(key, url, extra_filter, async_fn):
+    try:
+        if async_fn is not None:
+            posts = _run_async(async_fn())
+        else:
+            posts = _run_async(_scrape(url, extra_filter))
+        now = time.time()
+        with _lock:
+            _cache[key] = {
+                "posts": posts,
+                "timestamp": now,
+                "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+            }
+    finally:
+        _refreshing.discard(key)
+
+
+def _do_refresh_sync(key, fetcher):
+    try:
+        posts = fetcher()
+        now = time.time()
+        with _lock:
+            _cache[key] = {
+                "posts": posts,
+                "timestamp": now,
+                "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+            }
+    finally:
+        _refreshing.discard(key)
+
+
+def get_cached(key, url=None, force=False, extra_filter=None, async_fn=None):
+    with _lock:
+        cached = _cache.get(key, {})
+        now = time.time()
+        fresh = not force and cached.get("timestamp", 0) and now - cached["timestamp"] < CACHE_TTL
+        if fresh:
+            return cached["posts"], cached["fetched_at"]
+        if cached.get("posts") and key not in _refreshing:
+            _refreshing.add(key)
+            t = threading.Thread(target=_do_refresh_async, args=(key, url, extra_filter, async_fn), daemon=True)
+            t.start()
+            return cached["posts"], cached["fetched_at"] + " (갱신 중)"
+    if async_fn is not None:
+        posts = _run_async(async_fn())
+    else:
+        posts = _run_async(_scrape(url, extra_filter))
+    now = time.time()
+    with _lock:
+        _cache[key] = {
+            "posts": posts,
+            "timestamp": now,
+            "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+        }
+        _refreshing.discard(key)
+    return posts, _cache[key]["fetched_at"]
+
+
+def get_cached_sync(key, fetcher, force=False):
+    with _lock:
+        cached = _cache.get(key, {})
+        now = time.time()
+        fresh = not force and cached.get("timestamp", 0) and now - cached["timestamp"] < CACHE_TTL
+        if fresh:
+            return cached["posts"], cached["fetched_at"]
+        if cached.get("posts") and key not in _refreshing:
+            _refreshing.add(key)
+            t = threading.Thread(target=_do_refresh_sync, args=(key, fetcher), daemon=True)
+            t.start()
+            return cached["posts"], cached["fetched_at"] + " (갱신 중)"
+    posts = fetcher()
+    now = time.time()
+    with _lock:
+        _cache[key] = {
+            "posts": posts,
+            "timestamp": now,
+            "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+        }
+        _refreshing.discard(key)
+    return posts, _cache[key]["fetched_at"]
+
+
+def fetch_thumb(post_url):
+    if post_url in _thumb_cache:
+        return _thumb_cache[post_url]
+    try:
+        r = req_lib.get(post_url, headers=_HEADERS, timeout=6)
+        soup = BeautifulSoup(r.text, "html.parser")
+        img_el = soup.select_one(".xe_content img, .rd_body img, .document_content img")
+        img_url = None
+        if img_el:
+            img_url = (img_el.get("src") or img_el.get("data-src") or img_el.get("data-lazy-src") or "")
+            if img_url.startswith("//"):
+                img_url = "https:" + img_url
+            if not img_url.startswith("http"):
+                img_url = None
+        _thumb_cache[post_url] = img_url
+        return img_url
+    except Exception:
+        return None
+
+
+def _fetch_ohmyhumor():
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"}
+    r = req_lib.get(OHMYHUMOR_URL, headers=headers, timeout=10)
+    r.encoding = r.apparent_encoding
+    soup = BeautifulSoup(r.text, "html.parser")
+    results, seen = [], set()
+    for post in soup.select("td.subject a")[:60]:
+        title = post.get_text(strip=True)
+        href  = post.get("href", "")
+        if not title or len(title) < 3 or title in seen:
+            continue
+        seen.add(title)
+        if href and not href.startswith("http"):
+            href = "http://www.todayhumor.co.kr" + href
+        if is_filtered(title):
+            continue
+        results.append({"title": title, "url": href, "date": ""})
+        if len(results) >= 40:
+            break
+    return results
+
+
+def _translate_ko(text):
+    try:
+        r = req_lib.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "en", "tl": "ko", "dt": "t", "q": text},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=5,
+        )
+        return r.json()[0][0][0]
+    except Exception:
+        return text
+
+
+def _relative_time_iso(dt_str):
+    try:
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        diff_min = int((now - dt).total_seconds() / 60)
+        if diff_min < 1:   return "방금 전"
+        if diff_min < 60:  return f"{diff_min}분 전"
+        if diff_min < 1440: return f"{diff_min // 60}시간 전"
+        return f"{diff_min // 1440}일 전"
+    except Exception:
+        return ""
+
+
+async def _scrape_arca_page(browser, url):
+    page = await browser.new_page()
+    async def handle_route(route):
+        if route.request.resource_type in ("image", "font", "media", "stylesheet"):
+            await route.abort()
+        else:
+            await route.continue_()
+    await page.route("**/*", handle_route)
+    await page.goto(url, wait_until="domcontentloaded")
+    await page.wait_for_timeout(1500)
+    html = await page.content()
+    await page.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    results, seen = [], set()
+    for row in soup.select("a.vrow.column:not(.notice)"):
+        title_el = row.select_one("span.title")
+        if not title_el:
+            continue
+        title = title_el.get_text(strip=True)
+        href = row.get("href", "")
+        if not title or len(title) < 3:
+            continue
+        if not href.startswith("http"):
+            href = "https://arca.live" + href
+        if href in seen:
+            continue
+        seen.add(href)
+        if is_filtered(title):
+            continue
+
+        time_el = row.select_one("time[datetime]")
+        date_text = _relative_time_iso(time_el["datetime"]) if time_el else ""
+
+        views_el = row.select_one("span.vcol.col-view")
+        views = views_el.get_text(strip=True) if views_el else ""
+
+        rate_el = row.select_one("span.vcol.col-rate")
+        recommend = rate_el.get_text(strip=True) if rate_el else ""
+
+        results.append({"title": title, "url": href, "date": date_text,
+                        "views": views, "recommend": recommend})
+    return results
+
+
+async def _scrape_arca(pages=2):
+    browser = await _ensure_browser()
+    page_urls = [ARCA_URL if pg == 1 else f"{ARCA_URL}?before=9999999&p={pg}" for pg in range(1, pages + 1)]
+    pages_data = await asyncio.gather(*[_scrape_arca_page(browser, u) for u in page_urls])
+    results, seen = [], set()
+    for page_posts in pages_data:
+        for post in page_posts:
+            if post["url"] not in seen:
+                seen.add(post["url"])
+                results.append(post)
+    return results
+
+
+def _fetch_reddit():
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; fmkorea-web/1.0)"}
+    r = req_lib.get(f"{REDDIT_URL}?limit=50", headers=headers, timeout=10)
+    data = r.json()
+    posts = []
+    for item in data.get("data", {}).get("children", []):
+        d = item.get("data", {})
+        if d.get("stickied") or not d.get("title"):
+            continue
+        posts.append({
+            "title": _translate_ko(d["title"]),
+            "url":   "https://www.reddit.com" + d["permalink"],
+            "date":  "",
+        })
+        if len(posts) >= 40:
+            break
+    return posts
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/humor")
+def api_humor():
+    try:
+        force = request.args.get("refresh") == "1"
+        posts, fetched_at = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=50))
+        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/udt")
+def api_udt():
+    try:
+        force = request.args.get("refresh") == "1"
+        posts, fetched_at = get_cached_sync("udt", _fetch_ohmyhumor, force)
+        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/dc")
+def api_dc():
+    try:
+        force = request.args.get("refresh") == "1"
+        posts, fetched_at = get_cached("dc", force=force, async_fn=_scrape_arca)
+        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/reddit")
+def api_reddit():
+    try:
+        force = request.args.get("refresh") == "1"
+        posts, fetched_at = get_cached_sync("reddit", _fetch_reddit, force)
+        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+@app.route("/api/patch")
+def api_patch():
+    try:
+        force = request.args.get("refresh") == "1"
+        posts, fetched_at = get_cached("patch", PATCH_URL, force, extra_filter=is_korean_only)
+        return jsonify({"posts": posts, "count": len(posts), "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/search")
+def api_search():
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"error": "검색어를 입력해주세요."}), 400
+    try:
+        url = f"https://www.fmkorea.com/search.php?query={quote(query)}&st=title&sn=off&ss=on&so=r"
+        posts = _run_async(_scrape(url))
+        return jsonify({"posts": posts, "count": len(posts), "query": query})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/patches")
+def api_patches():
+    path = os.path.join(os.path.dirname(__file__), "patches.json")
+    with open(path, encoding="utf-8") as f:
+        return jsonify(json.load(f))
+
+
+_SUGGEST_PATH = os.path.join(os.path.dirname(__file__), "suggestions.json")
+_suggest_lock = threading.Lock()
+
+
+def _load_suggestions():
+    with open(_SUGGEST_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_suggestions(data):
+    with open(_SUGGEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+@app.route("/api/suggestions", methods=["GET"])
+def api_suggestions_get():
+    with _suggest_lock:
+        return jsonify(_load_suggestions())
+
+
+@app.route("/api/suggestions", methods=["POST"])
+def api_suggestions_post():
+    body = request.json or {}
+    name    = (body.get("name", "") or "").strip()
+    content = (body.get("content", "") or "").strip()
+    if not name or not content:
+        return jsonify({"error": "이름과 내용을 모두 입력해주세요."}), 400
+    entry = {
+        "id": int(time.time() * 1000),
+        "name": name,
+        "content": content,
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    with _suggest_lock:
+        data = _load_suggestions()
+        data.insert(0, entry)
+        _save_suggestions(data)
+    return jsonify(entry), 201
+
+
+@app.route("/api/thumb")
+def api_thumb():
+    url = request.args.get("url", "")
+    if not url or not url.startswith("https://www.fmkorea.com"):
+        return jsonify({"img": None})
+    return jsonify({"img": fetch_thumb(url)})
+
+
+_YT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
+def _fetch_yt_channel(ch):
+    handle = ch["handle"]
+    url = f"https://www.youtube.com/{handle}"
+    try:
+        r = req_lib.get(url, headers=_YT_HEADERS, timeout=10)
+        text = r.text
+
+        m = re.search(r'"channelMetadataRenderer":\{"title":"([^"]+)"', text)
+        name = m.group(1) if m else ch["label"]
+
+        m = re.search(r'"subscriberCountText":\{"simpleText":"([^"]+)"', text)
+        subs = m.group(1) if m else ""
+
+        m = re.search(r'"videosCountText":\{"runs":\[\{"text":"(\d[\d,]*)"', text)
+        videos = m.group(1) + "개" if m else ""
+
+        m = re.search(r'"avatar":\{"thumbnails":\[\{"url":"(https://yt3[^"]+)"', text)
+        avatar = m.group(1) if m else None
+
+        m = re.search(r'"description":"((?:[^"\\]|\\.){0,200})"', text)
+        desc = m.group(1).replace("\\n", " ").replace('\\"', '"')[:100] if m else ""
+
+        return {
+            "handle": handle, "name": name, "subscribers": subs,
+            "videos": videos, "avatar": avatar, "description": desc,
+            "url": url,
+            "shorts_url": f"https://www.youtube.com/{handle}/shorts" if ch["shorts"] else url,
+            "shorts": ch["shorts"],
+        }
+    except Exception as e:
+        return {
+            "handle": handle, "name": ch["label"], "subscribers": "", "videos": "",
+            "avatar": None, "description": "", "url": url,
+            "shorts_url": f"https://www.youtube.com/{handle}/shorts",
+            "shorts": ch["shorts"], "error": str(e),
+        }
+
+
+def _fetch_all_yt():
+    return [_fetch_yt_channel(ch) for ch in YOUTUBE_CHANNELS]
+
+
+@app.route("/api/yt_channels")
+def api_yt_channels():
+    try:
+        force = request.args.get("refresh") == "1"
+        channels, fetched_at = get_cached_sync("yt_channels", _fetch_all_yt, force)
+        return jsonify({"channels": channels, "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _prewarm():
+    time.sleep(1)
+    try:
+        posts = _run_async(_scrape(HUMOR_URL, pages=50))
+        with _lock:
+            _cache["humor"] = {
+                "posts": posts,
+                "timestamp": time.time(),
+                "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+            }
+    except Exception:
+        pass
+
+threading.Thread(target=_prewarm, daemon=True).start()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)

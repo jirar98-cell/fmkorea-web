@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Playwright
+.playwright/
+
+# 민감 정보 / 로컬 설정
+.env
+*.local
+
+# 사용자 데이터 (올리고 싶으면 삭제)
+suggestions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>유튜브(자료수집)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Malgun Gothic', -apple-system, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+
+        /* ── 헤더 ── */
+        .header {
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .menu-btn {
+            background: none; border: none; color: #bbb;
+            font-size: 20px; cursor: pointer; padding: 4px 6px;
+            flex-shrink: 0; line-height: 1;
+        }
+        .menu-btn:hover { color: #fff; }
+        .header-title { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+        .header-title h1 { font-size: 16px; font-weight: 700; white-space: nowrap; }
+        .current-tab-label {
+            font-size: 13px; color: #666;
+            border-left: 1px solid #333; padding-left: 10px; white-space: nowrap;
+        }
+        .search-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .search-group input {
+            width: 140px; padding: 7px 14px; border: 1px solid #333; border-radius: 18px;
+            font-size: 14px; font-family: inherit; outline: none;
+            background: #252525; color: #e0e0e0; transition: width 0.2s, border-color 0.15s;
+        }
+        .search-group input::placeholder { color: #555; }
+        .search-group input:focus { border-color: #555; width: 180px; }
+        .icon-btn {
+            background: #252525; color: #888; border: 1px solid #333;
+            width: 34px; height: 34px; border-radius: 50%; font-size: 17px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .icon-btn:hover { background: #333; color: #e0e0e0; }
+        .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* ── 사이드바 오버레이 ── */
+        .sidebar-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); z-index: 200;
+        }
+        .sidebar-overlay.open { display: block; }
+
+        /* ── 사이드바 ── */
+        .sidebar {
+            position: fixed; left: -260px; top: 0; bottom: 0; width: 240px;
+            background: #1a1a1a; border-right: 1px solid #2a2a2a;
+            z-index: 201; transition: left 0.25s ease;
+            display: flex; flex-direction: column; overflow-y: auto;
+        }
+        .sidebar.open { left: 0; }
+        .sidebar-header {
+            padding: 18px 16px 14px;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 12px; font-weight: 700; color: #555; letter-spacing: 0.5px;
+        }
+        .nav-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 13px 20px; cursor: pointer;
+            font-size: 15px; color: #aaa;
+            border-left: 3px solid transparent;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+            user-select: none;
+        }
+        .nav-item:hover { background: #252525; color: #fff; }
+        .nav-item.active { background: #1f1f1f; color: #fff; border-left-color: #4a9eff; }
+        .nav-icon { font-size: 17px; width: 24px; text-align: center; }
+        .nav-divider { height: 1px; background: #2a2a2a; margin: 6px 0; }
+
+        /* ── 컨텐츠 ── */
+        .container { max-width: 820px; margin: 0 auto; padding: 16px 14px; }
+
+        .status-bar {
+            display: none; align-items: center; justify-content: space-between;
+            font-size: 12px; color: #666; margin-bottom: 12px;
+            padding: 8px 14px; background: #1a1a1a; border-radius: 8px;
+            border: 1px solid #2a2a2a;
+        }
+        .status-left { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; background: #4a9eff; flex-shrink: 0; }
+        .dot.search { background: #f4a400; }
+        .back-btn {
+            background: none; border: 1px solid #333; border-radius: 12px;
+            padding: 3px 12px; font-size: 12px; color: #888; cursor: pointer; font-family: inherit;
+        }
+        .back-btn:hover { background: #252525; color: #ccc; }
+
+        .loading { display: none; text-align: center; padding: 60px 0; color: #555; }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid #2a2a2a;
+            border-top-color: #4a9eff; border-radius: 50%;
+            animation: spin 0.75s linear infinite; margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .post-list { display: flex; flex-direction: column; gap: 6px; }
+        .post-card {
+            background: #1a1a1a; border-radius: 10px; padding: 10px 14px 10px 10px;
+            display: flex; align-items: center; gap: 10px;
+            border: 1px solid #2a2a2a;
+            transition: background 0.12s, border-color 0.12s;
+            text-decoration: none; color: inherit;
+        }
+        .post-card:hover { background: #222; border-color: #3a3a3a; }
+        .thumb-wrap {
+            width: 56px; height: 56px; flex-shrink: 0;
+            border-radius: 7px; overflow: hidden; background: #252525; display: none;
+        }
+        .thumb-wrap.loaded { display: block; }
+        .thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .post-num { font-size: 12px; color: #444; font-weight: 600; width: 20px; text-align: right; flex-shrink: 0; }
+        .post-title-wrap { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .post-title { font-size: 14px; color: #ddd; line-height: 1.5; }
+        .post-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .meta-time  { font-size: 11px; color: #555; }
+        .meta-sep   { font-size: 11px; color: #333; }
+        .meta-views { font-size: 11px; color: #555; }
+        .meta-rec   { font-size: 11px; color: #c0392b; font-weight: 600; }
+        .arrow { color: #333; font-size: 16px; flex-shrink: 0; }
+
+        .error-box {
+            display: none; background: #2a1515; color: #e57373;
+            padding: 14px 18px; border-radius: 10px; font-size: 14px; margin-bottom: 12px;
+            border: 1px solid #4a2020;
+        }
+        .empty-box { display: none; text-align: center; padding: 60px 0; color: #444; font-size: 15px; }
+
+        /* ── 패치노트 ── */
+        #patchSection { display: none; }
+        .patch-list { display: flex; flex-direction: column; gap: 10px; }
+        .patch-card { background: #1a1a1a; border-radius: 10px; padding: 16px 18px; border: 1px solid #2a2a2a; }
+        .patch-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .patch-version { background: #4a9eff; color: #000; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+        .patch-title { font-size: 14px; font-weight: 700; color: #ddd; flex: 1; }
+        .patch-date { font-size: 12px; color: #555; }
+        .patch-changes { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+        .patch-changes li { font-size: 13px; color: #777; padding-left: 14px; position: relative; line-height: 1.5; }
+        .patch-changes li::before { content: '·'; position: absolute; left: 0; color: #4a9eff; font-weight: 700; }
+
+        /* ── 기능제안 ── */
+        #suggestSection { display: none; }
+        .suggest-form { background: #1a1a1a; border-radius: 10px; padding: 18px; border: 1px solid #2a2a2a; margin-bottom: 12px; }
+        .suggest-form h2 { font-size: 14px; font-weight: 700; color: #bbb; margin-bottom: 14px; }
+        .suggest-form input, .suggest-form textarea {
+            width: 100%; padding: 9px 13px; border: 1px solid #333;
+            border-radius: 8px; font-size: 14px; font-family: inherit; outline: none;
+            background: #252525; color: #e0e0e0; resize: none;
+        }
+        .suggest-form input:focus, .suggest-form textarea:focus { border-color: #4a9eff; }
+        .suggest-form input { margin-bottom: 10px; }
+        .suggest-form textarea { height: 90px; }
+        .suggest-submit {
+            margin-top: 10px; width: 100%; background: #4a9eff; color: #000;
+            border: none; padding: 11px; border-radius: 8px;
+            font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+        }
+        .suggest-submit:hover { background: #5aabff; }
+        .suggest-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+        .suggest-board { display: flex; flex-direction: column; gap: 8px; }
+        .suggest-card { background: #1a1a1a; border-radius: 10px; padding: 14px 16px; border: 1px solid #2a2a2a; }
+        .suggest-card-header { margin-bottom: 8px; }
+        .suggest-name { font-size: 13px; font-weight: 700; color: #4a9eff; }
+        .suggest-content { font-size: 13px; color: #bbb; line-height: 1.6; white-space: pre-wrap; margin-bottom: 8px; }
+        .suggest-date { font-size: 11px; color: #555; }
+        .suggest-empty { text-align: center; padding: 40px 0; color: #444; font-size: 14px; }
+        .suggest-err { color: #e57373; font-size: 13px; margin-top: 8px; display: none; }
+
+        /* ── 제외 키워드 ── */
+        #keywordsSection { display: none; }
+        .kw-panel { background: #1a1a1a; border-radius: 10px; padding: 18px; border: 1px solid #2a2a2a; }
+        .kw-panel h2 { font-size: 14px; font-weight: 700; color: #bbb; margin-bottom: 6px; }
+        .kw-panel .kw-desc { font-size: 13px; color: #555; margin-bottom: 16px; line-height: 1.5; }
+        .kw-input-row { display: flex; gap: 8px; margin-bottom: 18px; }
+        .kw-input-row input {
+            flex: 1; padding: 9px 13px; border: 1px solid #333; border-radius: 20px;
+            font-size: 14px; font-family: inherit; outline: none;
+            background: #252525; color: #e0e0e0;
+        }
+        .kw-input-row input:focus { border-color: #4a9eff; }
+        .kw-add-btn {
+            background: #4a9eff; color: #000; border: none;
+            padding: 9px 16px; border-radius: 20px; font-size: 14px;
+            font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+        }
+        .kw-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .kw-tag {
+            display: flex; align-items: center; gap: 6px;
+            background: #252525; border: 1px solid #333; border-radius: 20px;
+            padding: 5px 12px; font-size: 13px; color: #bbb;
+        }
+        .kw-tag .del { cursor: pointer; color: #555; font-size: 16px; }
+        .kw-tag .del:hover { color: #e57373; }
+        .kw-empty { color: #444; font-size: 13px; }
+        .kw-builtin { margin-top: 22px; padding-top: 16px; border-top: 1px solid #2a2a2a; }
+        .kw-builtin h3 { font-size: 12px; color: #444; margin-bottom: 10px; }
+        .kw-builtin .kw-tag { background: #1f1a10; border-color: #3a3020; color: #554433; pointer-events: none; }
+
+        /* ── 유튜브 채널 ── */
+        #ytSection { display: none; }
+        .yt-grid { display: flex; flex-direction: column; gap: 12px; }
+        .yt-card {
+            background: #1a1a1a; border-radius: 12px; border: 1px solid #2a2a2a;
+            padding: 18px 20px; display: flex; align-items: center; gap: 16px;
+        }
+        .yt-avatar {
+            width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
+            background: #252525; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 26px; color: #444;
+        }
+        .yt-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .yt-info { flex: 1; min-width: 0; }
+        .yt-name { font-size: 16px; font-weight: 700; color: #eee; margin-bottom: 4px; }
+        .yt-handle { font-size: 12px; color: #555; margin-bottom: 8px; }
+        .yt-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+        .yt-stat { font-size: 12px; color: #888; }
+        .yt-stat strong { color: #bbb; font-size: 13px; }
+        .yt-desc { font-size: 12px; color: #555; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .yt-actions { display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
+        .yt-btn {
+            display: inline-block; padding: 6px 14px; border-radius: 8px; font-size: 12px;
+            font-weight: 700; text-decoration: none; text-align: center; white-space: nowrap;
+        }
+        .yt-btn-main { background: #ff0000; color: #fff; }
+        .yt-btn-main:hover { background: #cc0000; }
+        .yt-btn-sub { background: #252525; color: #aaa; border: 1px solid #333; }
+        .yt-btn-sub:hover { background: #333; color: #eee; }
+        .yt-loading { text-align: center; padding: 50px 0; color: #555; }
+        .yt-error { background: #2a1515; color: #e57373; padding: 14px 18px; border-radius: 10px; border: 1px solid #4a2020; }
+
+        @media (max-width: 480px) {
+            .search-group input { width: 100px; }
+            .search-group input:focus { width: 140px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-header">카테고리</div>
+    <div class="nav-item" id="nav-humor"    onclick="selectNav('humor')"><span class="nav-icon">😂</span> 유머(펨코)</div>
+    <div class="nav-item"        id="nav-udt"      onclick="selectNav('udt')"><span class="nav-icon">🎭</span> 오유</div>
+    <div class="nav-item"        id="nav-dc"       onclick="selectNav('dc')"><span class="nav-icon">🔥</span> 아카라이브</div>
+    <div class="nav-item"        id="nav-reddit"   onclick="selectNav('reddit')"><span class="nav-icon">🌐</span> 레딧</div>
+    <div class="nav-divider"></div>
+    <div class="nav-item active"  id="nav-yt"       onclick="selectNav('yt')"><span class="nav-icon">▶</span> 내 채널</div>
+    <div class="nav-divider"></div>
+    <div class="nav-item"        id="nav-patch"    onclick="selectNav('patch')"><span class="nav-icon">📋</span> 패치노트</div>
+    <div class="nav-item"        id="nav-keywords" onclick="selectNav('keywords')"><span class="nav-icon">🚫</span> 제외 키워드</div>
+    <div class="nav-item"        id="nav-suggest"  onclick="selectNav('suggest')"><span class="nav-icon">💡</span> 기능제안</div>
+</div>
+
+<div class="header">
+    <button class="menu-btn" onclick="openSidebar()">☰</button>
+    <div class="header-title">
+        <h1>유튜브(자료수집)</h1>
+        <span class="current-tab-label" id="currentTabLabel">유머(펨코)</span>
+    </div>
+    <div class="search-group">
+        <input type="text" id="searchInput" placeholder="🔍 검색..."
+            onkeydown="if(event.key==='Enter') doSearch()">
+        <button class="icon-btn" id="refreshBtn" onclick="refreshCurrent()" title="새로고침">⟳</button>
+    </div>
+</div>
+
+<div class="container">
+
+    <div id="postsSection">
+        <div class="status-bar" id="statusBar">
+            <div class="status-left">
+                <div class="dot" id="statusDot"></div>
+                <span id="statusText"></span>
+            </div>
+            <button class="back-btn" id="backBtn" style="display:none" onclick="restoreTab()">← 목록으로</button>
+        </div>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div id="loadingText">불러오는 중...</div>
+        </div>
+        <div class="error-box" id="errorBox"></div>
+        <div class="empty-box" id="emptyBox">결과가 없습니다.</div>
+        <div class="post-list" id="postList"></div>
+    </div>
+
+    <div id="ytSection">
+        <div class="yt-grid" id="ytGrid"></div>
+    </div>
+
+    <div id="patchSection">
+        <div class="patch-list" id="patchList"></div>
+    </div>
+
+    <div id="suggestSection">
+        <div class="suggest-form">
+            <h2>기능 제안하기</h2>
+            <input type="text" id="suggestName" placeholder="이름 (닉네임)" maxlength="20">
+            <textarea id="suggestContent" placeholder="제안할 기능이나 개선사항을 자유롭게 적어주세요."></textarea>
+            <div class="suggest-err" id="suggestErr"></div>
+            <button class="suggest-submit" id="suggestBtn" onclick="submitSuggestion()">제안 등록</button>
+        </div>
+        <div class="suggest-board" id="suggestBoard"></div>
+    </div>
+
+    <div id="keywordsSection">
+        <div class="kw-panel">
+            <h2>제외 키워드 설정</h2>
+            <p class="kw-desc">아래 키워드가 제목에 포함된 게시물은 목록에서 숨겨집니다.<br>추가 즉시 현재 목록에 반영됩니다.</p>
+            <div class="kw-input-row">
+                <input type="text" id="kwInput" placeholder="제외할 키워드 입력..."
+                    onkeydown="if(event.key==='Enter') addKeyword()">
+                <button class="kw-add-btn" onclick="addKeyword()">추가</button>
+            </div>
+            <div class="kw-tags" id="kwTags">
+                <span class="kw-empty">추가된 키워드가 없습니다.</span>
+            </div>
+            <div class="kw-builtin">
+                <h3>기본 제외 키워드 (변경 불가)</h3>
+                <div class="kw-tags">
+                    <span class="kw-tag">대통령</span><span class="kw-tag">국회</span>
+                    <span class="kw-tag">민주당</span><span class="kw-tag">국민의힘</span>
+                    <span class="kw-tag">탄핵</span><span class="kw-tag">선거</span>
+                    <span class="kw-tag">야동</span><span class="kw-tag">성매매</span>
+                    <span class="kw-tag">자살</span><span class="kw-tag">마약</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let currentTab = 'yt';
+    let prevTab = 'yt';
+    const TAB_NAMES = { humor: '유머(펨코)', udt: '오유', dc: '아카라이브', reddit: '레딧', patch: '패치노트' };
+    let rawPosts = { humor: [], udt: [], dc: [], reddit: [], patch: [] };
+    let fetchedAt = { humor: '', udt: '', dc: '', reddit: '', patch: '' };
+    let customExclude = JSON.parse(localStorage.getItem('excludeKeywords') || '[]');
+    let isSearchMode = false;
+    let searchRaw = [];
+    let _loadingTimer = null;
+    let _loadingText = '';
+
+    function openSidebar() {
+        document.getElementById('sidebar').classList.add('open');
+        document.getElementById('sidebarOverlay').classList.add('open');
+    }
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').classList.remove('open');
+    }
+    function selectNav(tab) { closeSidebar(); switchTab(tab); }
+
+    function applyFilter(posts) {
+        if (!customExclude.length) return posts;
+        return posts.filter(p => !customExclude.some(kw => p.title.includes(kw)));
+    }
+    function escapeHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function hideAllSections() {
+        ['postsSection','patchSection','keywordsSection','suggestSection','ytSection']
+            .forEach(id => document.getElementById(id).style.display = 'none');
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.nav-item').forEach(t => t.classList.remove('active'));
+        const navEl = document.getElementById('nav-' + tab);
+        if (navEl) navEl.classList.add('active');
+        document.getElementById('searchInput').value = '';
+        document.getElementById('currentTabLabel').textContent = TAB_NAMES[tab] || tab;
+        hideAllSections();
+
+        if (tab === 'yt') {
+            document.getElementById('ytSection').style.display = 'block';
+            currentTab = 'yt'; loadYtChannels();
+        } else if (tab === 'patch') {
+            document.getElementById('patchSection').style.display = 'block';
+            currentTab = 'patch'; loadPatches();
+        } else if (tab === 'keywords') {
+            document.getElementById('keywordsSection').style.display = 'block';
+            currentTab = 'keywords'; renderKeywords();
+        } else if (tab === 'suggest') {
+            document.getElementById('suggestSection').style.display = 'block';
+            currentTab = 'suggest'; loadSuggestions();
+        } else {
+            document.getElementById('postsSection').style.display = 'block';
+            prevTab = tab;
+            if (tab !== currentTab || !rawPosts[tab].length) {
+                currentTab = tab; loadTab(tab);
+            } else {
+                currentTab = tab; isSearchMode = false;
+                showPosts(applyFilter(rawPosts[tab]), fetchedAt[tab], false);
+            }
+        }
+    }
+
+    function refreshCurrent() {
+        if (currentTab === 'keywords') return;
+        if (currentTab === 'patch') { loadPatches(); return; }
+        if (currentTab === 'suggest') { loadSuggestions(); return; }
+        if (isSearchMode) { doSearch(); return; }
+        loadTab(currentTab, true);
+    }
+
+    function restoreTab() {
+        isSearchMode = false;
+        document.getElementById('searchInput').value = '';
+        showPosts(applyFilter(rawPosts[prevTab]), fetchedAt[prevTab], false);
+        document.getElementById('backBtn').style.display = 'none';
+    }
+
+    async function loadTab(tab, force = false) {
+        isSearchMode = false;
+        setLoading(`${TAB_NAMES[tab] || tab} 불러오는 중...`);
+        document.getElementById('refreshBtn').disabled = true;
+        try {
+            const res = await fetch(`/api/${tab}${force ? '?refresh=1' : ''}`);
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            rawPosts[tab] = data.posts;
+            fetchedAt[tab] = data.fetched_at;
+            showPosts(applyFilter(data.posts), data.fetched_at, false);
+        } catch (e) {
+            showError(e.message);
+        } finally {
+            document.getElementById('refreshBtn').disabled = false;
+        }
+    }
+
+    async function doSearch() {
+        const query = document.getElementById('searchInput').value.trim();
+        if (!query) { document.getElementById('searchInput').focus(); return; }
+        isSearchMode = true;
+        setLoading(`"${query}" 검색 중...`);
+        document.getElementById('refreshBtn').disabled = true;
+        document.querySelectorAll('.nav-item').forEach(t => t.classList.remove('active'));
+        try {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            searchRaw = data.posts;
+            showPosts(applyFilter(data.posts), `"${data.query}" 전체 검색`, true);
+        } catch (e) {
+            showError(e.message);
+        } finally {
+            document.getElementById('refreshBtn').disabled = false;
+        }
+    }
+
+    function setLoading(text) {
+        if (_loadingTimer) { clearInterval(_loadingTimer); _loadingTimer = null; }
+        _loadingText = text;
+        let secs = 0;
+        document.getElementById('loadingText').textContent = `${text} (0초)`;
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('postList').innerHTML = '';
+        document.getElementById('statusBar').style.display = 'none';
+        document.getElementById('errorBox').style.display = 'none';
+        document.getElementById('emptyBox').style.display = 'none';
+        _loadingTimer = setInterval(() => {
+            secs++;
+            document.getElementById('loadingText').textContent = `${_loadingText} (${secs}초)`;
+        }, 1000);
+    }
+
+    function stopLoadingTimer() {
+        if (_loadingTimer) { clearInterval(_loadingTimer); _loadingTimer = null; }
+    }
+
+    function showPosts(posts, label, isSearch) {
+        stopLoadingTimer();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('statusDot').className = 'dot' + (isSearch ? ' search' : '');
+        document.getElementById('statusText').textContent = isSearch
+            ? `${label}  ·  ${posts.length}개`
+            : `${posts.length}개 소재  ·  ${label}`;
+        document.getElementById('statusBar').style.display = 'flex';
+        document.getElementById('backBtn').style.display = isSearch ? 'inline-block' : 'none';
+
+        if (!posts.length) { document.getElementById('emptyBox').style.display = 'block'; return; }
+
+        document.getElementById('postList').innerHTML = posts.map((p, i) => {
+            const metaParts = [];
+            if (p.date)      metaParts.push(`<span class="meta-time">${escapeHtml(p.date)}</span>`);
+            if (p.views)     metaParts.push(`<span class="meta-sep">·</span><span class="meta-views">조회 ${escapeHtml(p.views)}</span>`);
+            if (p.recommend) metaParts.push(`<span class="meta-sep">·</span><span class="meta-rec">추천 ${escapeHtml(p.recommend)}</span>`);
+            const meta = metaParts.length ? `<div class="post-meta">${metaParts.join('')}</div>` : '';
+            return `
+            <a class="post-card" href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">
+                <span class="post-num">${i + 1}</span>
+                <div class="thumb-wrap" id="tw-${i}"><img class="thumb-img" id="thumb-${i}" alt=""></div>
+                <div class="post-title-wrap">
+                    <span class="post-title">${escapeHtml(p.title)}</span>
+                    ${meta}
+                </div>
+                <span class="arrow">›</span>
+            </a>`;
+        }).join('');
+        loadThumbnails(posts);
+    }
+
+    function showError(msg) {
+        stopLoadingTimer();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('errorBox').innerHTML = `<strong>오류:</strong> ${escapeHtml(msg)}`;
+        document.getElementById('errorBox').style.display = 'block';
+    }
+
+    async function loadThumbnails(posts) {
+        const BATCH = 5;
+        for (let i = 0; i < posts.length; i += BATCH) {
+            await Promise.all(posts.slice(i, i + BATCH).map(async (p, j) => {
+                const idx = i + j;
+                if (!p.url || !p.url.startsWith('https://www.fmkorea.com')) return;
+                try {
+                    const res = await fetch(`/api/thumb?url=${encodeURIComponent(p.url)}`);
+                    const data = await res.json();
+                    if (data.img) {
+                        const wrap = document.getElementById(`tw-${idx}`);
+                        const img  = document.getElementById(`thumb-${idx}`);
+                        if (wrap && img) { img.onload = () => wrap.classList.add('loaded'); img.src = data.img; }
+                    }
+                } catch {}
+            }));
+        }
+    }
+
+    async function loadYtChannels(force = false) {
+        const grid = document.getElementById('ytGrid');
+        grid.innerHTML = '<div class="yt-loading">채널 정보 불러오는 중...</div>';
+        try {
+            const data = await (await fetch(`/api/yt_channels${force ? '?refresh=1' : ''}`)).json();
+            if (data.error) throw new Error(data.error);
+            grid.innerHTML = data.channels.map(ch => `
+                <div class="yt-card">
+                    <div class="yt-avatar">
+                        ${ch.avatar
+                            ? `<img src="${escapeHtml(ch.avatar)}" onerror="this.parentElement.textContent='▶'">`
+                            : '▶'}
+                    </div>
+                    <div class="yt-info">
+                        <div class="yt-name">${escapeHtml(ch.name)}</div>
+                        <div class="yt-handle">${escapeHtml(ch.handle)}</div>
+                        <div class="yt-stats">
+                            ${ch.subscribers ? `<span class="yt-stat">구독자 <strong>${escapeHtml(ch.subscribers)}</strong></span>` : ''}
+                            ${ch.videos ? `<span class="yt-stat">영상 <strong>${escapeHtml(ch.videos)}</strong></span>` : ''}
+                        </div>
+                        ${ch.description ? `<div class="yt-desc">${escapeHtml(ch.description)}</div>` : ''}
+                    </div>
+                    <div class="yt-actions">
+                        <a class="yt-btn yt-btn-main" href="${escapeHtml(ch.shorts_url)}" target="_blank" rel="noopener">
+                            ${ch.shorts ? 'Shorts' : '채널'}
+                        </a>
+                        <a class="yt-btn yt-btn-sub" href="${escapeHtml(ch.url)}" target="_blank" rel="noopener">채널 홈</a>
+                    </div>
+                </div>`).join('');
+        } catch (e) {
+            grid.innerHTML = `<div class="yt-error">오류: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    async function loadPatches() {
+        const list = document.getElementById('patchList');
+        list.innerHTML = '<div style="text-align:center;padding:40px;color:#555">불러오는 중...</div>';
+        try {
+            const patches = await (await fetch('/api/patches')).json();
+            list.innerHTML = patches.map(p => `
+                <div class="patch-card">
+                    <div class="patch-header">
+                        <span class="patch-version">${escapeHtml(p.version)}</span>
+                        <span class="patch-title">${escapeHtml(p.title)}</span>
+                        <span class="patch-date">${escapeHtml(p.date)}</span>
+                    </div>
+                    <ul class="patch-changes">${p.changes.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
+                </div>`).join('');
+        } catch (e) {
+            list.innerHTML = `<div style="color:#e57373;padding:20px">오류: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    async function loadSuggestions() {
+        const board = document.getElementById('suggestBoard');
+        board.innerHTML = '<div class="suggest-empty">불러오는 중...</div>';
+        try {
+            renderSuggestions(await (await fetch('/api/suggestions')).json());
+        } catch (e) {
+            board.innerHTML = `<div class="suggest-empty" style="color:#e57373">오류: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function timeAgo(dateStr) {
+        const diff = Math.floor((Date.now() - new Date(dateStr.replace(' ','T'))) / 60000);
+        if (diff < 1) return '방금 전';
+        if (diff < 60) return `${diff}분 전`;
+        const h = Math.floor(diff / 60);
+        return h < 24 ? `${h}시간 전` : `${Math.floor(h/24)}일 전`;
+    }
+
+    function renderSuggestions(list) {
+        const board = document.getElementById('suggestBoard');
+        if (!list.length) { board.innerHTML = '<div class="suggest-empty">아직 제안이 없습니다.</div>'; return; }
+        board.innerHTML = list.map(s => `
+            <div class="suggest-card">
+                <div class="suggest-card-header"><span class="suggest-name">${escapeHtml(s.name)}</span></div>
+                <div class="suggest-content">${escapeHtml(s.content)}</div>
+                <div class="suggest-date">${s.date.split(' ')[0].replace(/-/g,'.')} · ${timeAgo(s.date)}</div>
+            </div>`).join('');
+    }
+
+    async function submitSuggestion() {
+        const name = document.getElementById('suggestName').value.trim();
+        const content = document.getElementById('suggestContent').value.trim();
+        const errEl = document.getElementById('suggestErr');
+        const btn = document.getElementById('suggestBtn');
+        errEl.style.display = 'none';
+        if (!name || !content) { errEl.textContent = '이름과 내용을 모두 입력해주세요.'; errEl.style.display = 'block'; return; }
+        btn.disabled = true; btn.textContent = '등록 중...';
+        try {
+            const data = await (await fetch('/api/suggestions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, content }),
+            })).json();
+            if (data.error) throw new Error(data.error);
+            document.getElementById('suggestName').value = '';
+            document.getElementById('suggestContent').value = '';
+            loadSuggestions();
+        } catch (e) { errEl.textContent = '오류: ' + e.message; errEl.style.display = 'block'; }
+        finally { btn.disabled = false; btn.textContent = '제안 등록'; }
+    }
+
+    function saveKeywords() { localStorage.setItem('excludeKeywords', JSON.stringify(customExclude)); }
+    function reapplyFilter() {
+        if (currentTab === 'keywords') return;
+        if (!isSearchMode && rawPosts[currentTab]) showPosts(applyFilter(rawPosts[currentTab]), fetchedAt[currentTab], false);
+        else if (isSearchMode) showPosts(applyFilter(searchRaw), '검색 재필터링', true);
+    }
+    function addKeyword() {
+        const kw = document.getElementById('kwInput').value.trim();
+        if (!kw || customExclude.includes(kw)) { document.getElementById('kwInput').focus(); return; }
+        customExclude.push(kw); saveKeywords();
+        document.getElementById('kwInput').value = '';
+        renderKeywords(); reapplyFilter();
+    }
+    function removeKeyword(kw) {
+        customExclude = customExclude.filter(k => k !== kw); saveKeywords();
+        renderKeywords(); reapplyFilter();
+    }
+    function renderKeywords() {
+        const container = document.getElementById('kwTags');
+        if (!customExclude.length) { container.innerHTML = '<span class="kw-empty">추가된 키워드가 없습니다.</span>'; return; }
+        container.innerHTML = customExclude.map(kw => `
+            <span class="kw-tag">${escapeHtml(kw)}<span class="del" onclick="removeKeyword('${escapeHtml(kw)}')">×</span></span>`).join('');
+    }
+
+    document.getElementById('postsSection').style.display = 'none';
+    document.getElementById('ytSection').style.display = 'block';
+    document.getElementById('currentTabLabel').textContent = '내 채널';
+    renderKeywords();
+    loadYtChannels();
+</script>
+</body>
+</html>
