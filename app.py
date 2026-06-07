@@ -559,7 +559,7 @@ def index():
 def api_humor():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at, filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=10))
+        posts, fetched_at, filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=3))
         return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

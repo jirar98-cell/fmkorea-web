@@ -22,7 +22,7 @@ client = OpenAI(
 )
 
 # 무료 · 빠름 · 품질 충분. 더 빠르게 하려면 "llama-3.1-8b-instant"
-MODEL_FAST = "llama-3.3-70b-versatile"
+MODEL_FAST = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """너는 한국 유머 커뮤니티 피드의 게시물 필터 AI다.
 게시물 제목을 읽고 맥락을 파악해서 판단해라.
