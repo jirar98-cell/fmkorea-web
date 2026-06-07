@@ -505,7 +505,7 @@ body.compact-mode .hot-bar    { display:none; }
                 <div id="shItems"><div class="sh-empty">검색 기록이 없습니다</div></div>
             </div>
         </div>
-        <button class="ai-btn" id="aiBtn" onclick="toggleAI()" title="AI 소재 채점 켜기/끄기">🤖 AI</button>
+        <button class="ai-btn on" id="aiBtn" onclick="toggleAI()" title="AI 소재 채점 켜기/끄기">🤖 AI 켜짐</button>
         <button class="icon-btn" id="refreshBtn" onclick="refreshCurrent()" title="새로고침 (r)">⟳</button>
         <button class="icon-btn" onclick="openSettings()" title="설정">⚙</button>
     </div>
@@ -637,7 +637,7 @@ let currentTab = 'yt', prevPostTab = 'humor';
 let rawPosts = {}, fetchedAt = {}, lastUrls = {}, filteredCounts = {};
 let isSearch = false, _shown = [], _renderOff = 0;
 let selIdx = -1, sortMode = 'default';
-let aiMode = false, _aiRunId = 0;
+let aiMode = true, _aiRunId = 0;
 let qfActive = false, qfStr = '';
 let _loadTmr = null, _autoTmr = null, _autoLeft = 0;
 let _pwaPrompt = null, _newFirstIdx = -1;
@@ -1161,7 +1161,7 @@ async function toggleAI() {
     if (!aiMode) {
         try {
             const d = await fetch('/api/score_available').then(r=>r.json());
-            if (!d.available) { toast('ANTHROPIC_API_KEY 미설정 — AI 채점 불가','err'); return; }
+            if (!d.available) { toast('GROQ_API_KEY 미설정 — AI 채점 불가','err'); return; }
         } catch { toast('서버 연결 실패','err'); return; }
     }
     aiMode = !aiMode;
@@ -1206,9 +1206,7 @@ async function applyAIFilter() {
             } else {
                 const cls  = verdict==='pass' ? 'ai-pass' : 'ai-review';
                 const icon = verdict==='pass' ? '✅ pass' : '👀 review';
-                const sc   = `훅 ${d.hook_score??'?'}·톤 ${d.tone_fit??'?'}·사실 ${d.fact_confidence??'?'}`;
-                const liner = d.one_liner ? `<div class="ai-one">"${esc(d.one_liner)}"</div>` : '';
-                if (slot) slot.innerHTML = `<span class="ai-badge ${cls}">${icon} &nbsp;${sc}</span>${liner}`;
+                if (slot) slot.innerHTML = `<span class="ai-badge ${cls}">${icon} &nbsp;AI 필터링 완료</span>`;
             }
         } catch { if (slot) slot.innerHTML = ''; }
     }
@@ -1229,6 +1227,13 @@ async function loadFilterMeta(){
 //  INIT
 // ═══════════════════════════════════════════════════
 initSettings(); updateBMBadge(); renderKW();
+fetch('/api/score_available').then(r=>r.json()).then(d=>{
+    if (!d.available) {
+        aiMode = false;
+        const btn = document.getElementById('aiBtn');
+        if (btn) { btn.classList.remove('on'); btn.textContent = '🤖 AI'; }
+    }
+}).catch(()=>{ aiMode=false; const btn=document.getElementById('aiBtn'); if(btn){btn.classList.remove('on');btn.textContent='🤖 AI';} });
 ['postsSection','bookmarksSection','patchSection','suggestSection','keywordsSection'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
 document.getElementById('ytSection').style.display='block';
 document.getElementById('nav-yt').classList.add('active');

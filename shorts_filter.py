@@ -24,58 +24,40 @@ client = OpenAI(
 # 무료 · 빠름 · 품질 충분. 더 빠르게 하려면 "llama-3.1-8b-instant"
 MODEL_FAST = "llama-3.3-70b-versatile"
 
-# 통과 기준 (네 맘대로 조절)
-THRESHOLDS = {
-    "hook_min": 6,        # 훅이 이거보다 낮으면 버림
-    "tone_min": 5,        # 채널 톤 안 맞으면 버림
-    "fact_review": 7,     # 사실관계 점수가 이거보다 낮으면 "사람이 확인" 표시
-}
+SYSTEM_PROMPT = """너는 한국 유머 커뮤니티 피드의 게시물 필터 AI다.
+게시물 제목을 읽고 맥락을 파악해서 판단해라.
 
-# 네 채널 정체성을 여기 박아넣음. 채널 방향 바뀌면 이 텍스트만 수정.
-CHANNEL_BRIEF = """
-[채널 정체성]
-- 컨셉: '예상 못한 실제 사건' 중심의 에버그린 쇼츠. 트렌드 타이밍보다 언제 봐도 먹히는 소재.
-- 핵심 무기: 첫 3초 안에 시각적으로 강한 훅. "어? 뭐야 이거" 하고 멈추게 만드는 장면.
-- 톤(민욱 톤 2.0): 친구한테 썰 풀듯 짧고 캐주얼. 첫 컷에 결론 반쯤 던져서 끝까지 보게 함.
-  과한 설명 없이 1~2줄 호흡, 가벼운 피식 포인트.
-- 피하는 것: 흔한 밈 재탕, 톤 안 맞는 정치/심각한 시사, 출처 불명 낚시성 가짜 사건.
-"""
+[drop — 명확히 걸러야 할 것]
+- 현직·전직 정치인 이름이 등장하는 글
+- 시위·집회·탄핵·계엄 등 현재 정치 사건을 다루는 글
+- 정당·선거·법조·수사 관련 뉴스성 글
+- 젠더갈등·이념대립 등 사회갈등 글
 
-SYSTEM_PROMPT = f"""너는 한 쇼츠 채널의 소재 선별 담당이다.
-{CHANNEL_BRIEF}
+[pass — 통과시킬 것]
+- 일상 유머, 웃긴 에피소드, 의외의 상황
+- 동물, 음식, 여행, 취미, 스포츠, 게임
+- 영화·드라마·애니·음악 관련 콘텐츠
+- 흥미로운 사실, 신기한 이야기
 
-주어진 자료를 아래 3개 축으로 0~10점 채점해라.
+중요: 애매하거나 확실하지 않으면 무조건 pass.
+정치성이 명확할 때만 drop.
 
-1) hook_score: 쇼츠로 떡상할 '훅' 잠재력. 첫 3초에 멈추게 할 시각적/내용적 임팩트와 의외성.
-2) tone_fit: 위 채널 톤·주제에 맞는 정도. 톤 안 맞으면 낮게.
-3) fact_confidence: 사실관계 신뢰도. 진짜 일어난 사건일 확률.
-   - 확인 가능한 출처/근거가 있으면 높게.
-   - 출처 불명·과장·낚시 냄새가 나면 낮게.
+예) "KBS도 탱크 보도하네" → 시위 맥락 → drop
+예) "올공이 특정집단에게 먹힌다면" → 유머 → pass
+예) "어제 올림픽공원 현장 카메라로 담아봤습니다" → 일상 → pass
 
-반드시 아래 JSON 형식만 출력. 다른 말, 마크다운, 코드펜스 절대 금지.
-{{
-  "hook_score": <0-10 정수>,
-  "hook_reason": "<한 줄>",
-  "tone_fit": <0-10 정수>,
-  "tone_reason": "<한 줄>",
-  "fact_confidence": <0-10 정수>,
-  "fact_reason": "<한 줄>",
-  "one_liner": "<이 소재 쇼츠 훅으로 쓸 첫 컷 한 줄, 민욱 톤>"
-}}"""
+반드시 아래 JSON만 출력. 다른 말, 마크다운 절대 금지.
+{"verdict": "pass" or "drop", "reason": "<한 줄>"}"""
 
 
-def score_material(title: str, content: str, url: str | None = None,
+def score_material(title: str, content: str = "", url: str | None = None,
                    use_search: bool = False) -> dict:
-    """자료 하나를 채점해서 dict 반환. verdict 는 여기서 계산해 붙인다."""
+    """제목을 읽고 pass/drop 판정 반환."""
     user_text = f"제목: {title}"
-    if content:
-        user_text += f"\n\n본문:\n{content}"
-    if url:
-        user_text += f"\n\n출처 URL: {url}"
 
     resp = client.chat.completions.create(
         model=MODEL_FAST,
-        max_tokens=1024,
+        max_tokens=128,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": user_text},
@@ -88,23 +70,11 @@ def score_material(title: str, content: str, url: str | None = None,
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        return {"verdict": "review", "error": "parse_failed", "raw": raw}
+        return {"verdict": "pass", "reason": "parse_failed"}
 
-    data["verdict"] = _decide(data)
+    if data.get("verdict") not in ("pass", "drop"):
+        data["verdict"] = "pass"
     return data
-
-
-def _decide(d: dict) -> str:
-    """점수 보고 pass / review / drop 결정."""
-    hook = d.get("hook_score", 0)
-    tone = d.get("tone_fit", 0)
-    fact = d.get("fact_confidence", 0)
-
-    if hook < THRESHOLDS["hook_min"] or tone < THRESHOLDS["tone_min"]:
-        return "drop"
-    if fact < THRESHOLDS["fact_review"]:
-        return "review"
-    return "pass"
 
 
 def filter_batch(items: list[dict], **kwargs) -> dict:

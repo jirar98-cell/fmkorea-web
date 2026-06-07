@@ -27,84 +27,16 @@ YOUTUBE_CHANNELS = [
 ]
 
 FILTER_KEYWORDS = {
-    # 직접적 정치 용어
-    "정치": [
-        "대통령", "국회", "민주당", "국민의힘", "탄핵", "선거", "여당", "야당",
-        "국무총리", "장관", "차관", "국무회의", "당대표", "원내대표",
-        "공천", "경선", "정의당", "진보당", "개혁신당", "기본소득당",
-        "여의도", "청와대", "대통령실",
-    ],
-    # 정치인 이름 — 현직/전직 주요 정치인
-    "정치인": [
-        "이재명", "윤석열", "한동훈", "이준석", "나경원", "홍준표",
-        "안철수", "유승민", "김부겸", "이낙연", "박지원", "추미애",
-        "조국", "원희룡", "오세훈", "박형준", "이상민", "정청래",
-        "우상호", "박범계", "강기정", "류호정", "장제원", "김기현",
-        "노무현", "이명박", "박근혜", "문재인", "김대중",
-        "권성동", "박성준", "민형배", "신동근", "이소영", "이용우",
-        "김남국", "황운하", "김의겸", "최강욱", "고민정",
-        "윤희숙", "배현진", "태영호", "하태경", "주호영",
-    ],
-    # 법조/수사 — 뉴스성 정치 콘텐츠의 핵심 지표
-    "법조수사": [
-        "검찰", "기소", "구속", "구속영장", "재판", "판결", "수사",
-        "압수수색", "소환", "체포", "법원", "고발", "고소",
-        "피의자", "피고인", "검사", "영장청구",
-        "무죄", "유죄", "항소", "상고", "선고", "불기소",
-        "특검", "공수처",
-    ],
-    # 사회갈등 — 정치적 색채가 강한 사회 이슈
-    "사회갈등": [
-        "페미", "페미니즘", "남혐", "여혐", "젠더갈등", "젠더이슈",
-        "성차별", "미러링", "워마드", "메갈",
-        "반일", "친일", "혐중", "종북", "반미", "친미",
-        "이념갈등", "극우", "극좌", "좌파", "우파",
-    ],
-    # 뉴스 기사형 — 유머가 아닌 뉴스 헤드라인 지표
-    "뉴스기사": [
-        "단독", "속보", "긴급",
-        "의혹", "비리", "비위", "부패",
-        "사퇴", "사임", "경질", "해임", "임명",
-        "해명", "반박", "사과문",
-        "브리핑", "공식입장", "공식발표",
-    ],
     "성적": [
         "야동", "성인", "19금", "야사", "섹스", "원조", "조건",
-        "성매매", "몰카", "젖", "포르노", "음란",
+        "성매매", "몰카", "포르노", "음란",
     ],
     "위해": [
-        "자살", "자해", "폭발물", "테러", "마약", "살인", "폭행",
-        "김세의", "장사의신", "살해", "가스라이팅",
-    ],
-    "스포츠": [
-        "축구", "EPL", "K리그", "챔피언스리그", "손흥민", "이강인",
-        "풋살", "프리미어리그", "라리가", "분데스리가",
-        "야구", "MLB", "KBO", "류현진", "오타니", "홈런",
-        "삼성라이온즈", "두산베어스", "LG트윈스", "키움히어로즈",
-        "농구", "NBA", "KBL", "배구", "V리그", "핸드볼", "선수",
-    ],
-    "게임": [
-        "롤", "리그오브레전드", "오버워치", "배그", "배틀그라운드",
-        "스타크래프트", "피파온라인", "LCK", "페이커",
-        "발로란트", "로스트아크", "메이플", "던파",
+        "자살", "자해", "폭발물", "테러", "마약", "살인", "폭행", "살해",
     ],
 }
 
-# 패턴 기반 필터 — 키워드로 못 잡는 뉴스 헤드라인 구조 탐지
-_FILTER_PATTERNS = [
-    # "여당/야당 ..." 구조
-    re.compile(r'(?:여당|야당|여야)\s'),
-    # "OO 장관/총리/의원이/가/은/는" 구조
-    re.compile(r'(?:장관|총리|의원|대표|위원장|청장|대변인)\s*(?:이|가|은|는|을|를|의)'),
-    # 정부 기관명이 주어인 문장
-    re.compile(r'(?:정부|국방부|외교부|법무부|기재부|행안부|교육부|보건복지부)\s*(?:이|가|은|는|,)'),
-    # 뉴스 속보 형식 [단독] [속보]
-    re.compile(r'^\s*(?:\[단독\]|\[속보\]|\[긴급\]|\[Breaking\])'),
-    # "~했다" 로 끝나는 뉴스 선언형 (단, 30자 이상인 긴 제목)
-    re.compile(r'^.{25,}(?:했다|한다|됐다|된다|밝혔다|주장했다|강조했다|비판했다)[.…]?\s*$'),
-    # 따옴표 인용 포함 (정치인 발언 인용)
-    re.compile(r'["""][가-힣\s]{5,}["""].*(?:했|한|가|이|은|는)'),
-]
+_FILTER_PATTERNS = []
 
 SKIP_TITLES = ["전체 삭제", "공지", "규정", "금지", "차단", "신고", "불만글"]
 CACHE_TTL = 300
@@ -292,7 +224,7 @@ async def _scrape_page(browser, url, extra_filter=None):
         except ValueError:
             voted_num = 0
 
-        if voted_num < 15:
+        if voted_cell and voted_num < 5:
             continue
 
         results.append({
@@ -300,6 +232,34 @@ async def _scrape_page(browser, url, extra_filter=None):
             "views": views_text, "recommend": voted_text,
         })
     return results, filtered_count
+
+
+async def _ai_filter_posts(posts):
+    """AI로 게시물 필터링. drop 판정은 제외하고 반환."""
+    if not _sf_available or not posts:
+        return posts, 0
+
+    loop = asyncio.get_event_loop()
+    sem = asyncio.Semaphore(10)
+
+    async def _score_one(post):
+        async with sem:
+            try:
+                result = await loop.run_in_executor(
+                    None, lambda: _score_fn(title=post["title"])
+                )
+                return result
+            except Exception:
+                return {"verdict": "pass"}
+
+    scores = await asyncio.gather(*[_score_one(p) for p in posts])
+    kept, ai_dropped = [], 0
+    for post, score in zip(posts, scores):
+        if score.get("verdict") == "drop":
+            ai_dropped += 1
+        else:
+            kept.append(post)
+    return kept, ai_dropped
 
 
 async def _scrape(url, extra_filter=None, pages=1):
@@ -315,8 +275,8 @@ async def _scrape(url, extra_filter=None, pages=1):
             if post["url"] not in seen:
                 seen.add(post["url"])
                 results.append(post)
-    # filtered_count는 캐시 메타에 저장
-    return results, total_filtered
+    results, ai_dropped = await _ai_filter_posts(results)
+    return results, total_filtered + ai_dropped
 
 
 _refreshing = set()
@@ -745,7 +705,7 @@ def api_score():
     url   = request.args.get("url",   "").strip()
     use_search = request.args.get("search", "0") == "1"
     if not _sf_available:
-        return jsonify({"error": "ANTHROPIC_API_KEY 미설정 — AI 채점 불가"}), 503
+        return jsonify({"error": "GROQ_API_KEY 미설정 — AI 채점 불가"}), 503
     if not title:
         return jsonify({"error": "title 필요"}), 400
     cache_key = f"{title}|{use_search}"
