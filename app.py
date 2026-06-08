@@ -485,6 +485,107 @@ async def _fetch_ohmyhumor_classified():
     return tagged, 0
 
 
+_NOTICE_PAT = re.compile(r'^\[공지\]|^공지|^📢|^◤|체험단|이벤트 참여|이벤트$')
+_CRAWL_UA   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+
+def _fetch_ruliweb():
+    """루리웹 베스트 게시판 크롤링 (requests 기반)."""
+    boards = [
+        ("https://bbs.ruliweb.com/best/board/300148", "루리웹"),  # 유머
+        ("https://bbs.ruliweb.com/best/board/300143", "루리웹"),  # 연예
+    ]
+    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://bbs.ruliweb.com/"}
+    results, seen = [], set()
+    for url, src in boards:
+        try:
+            r = req_lib.get(url, headers=headers, timeout=8)
+            r.encoding = r.apparent_encoding
+            soup = BeautifulSoup(r.text, "html.parser")
+            for row in soup.select("tr.table_body"):
+                divsn = row.select_one("td.divsn")
+                if divsn and "공지" in divsn.get_text():
+                    continue
+                a = row.select_one("td.subject a.deco")
+                if not a:
+                    continue
+                title = a.get_text(strip=True)
+                href  = a.get("href", "")
+                if not title or len(title) < 3 or title in seen:
+                    continue
+                seen.add(title)
+                if is_filtered(title) or _NOTICE_PAT.search(title):
+                    continue
+                rec_el = row.select_one("td.recomd")
+                time_el = row.select_one("td.time")
+                results.append({
+                    "title": title,
+                    "url":   href if href.startswith("http") else "https://bbs.ruliweb.com" + href,
+                    "date":  time_el.get_text(strip=True) if time_el else "",
+                    "recommend": rec_el.get_text(strip=True) if rec_el else "",
+                    "source": src,
+                })
+                if len(results) >= 60:
+                    break
+        except Exception:
+            continue
+    return results
+
+
+def _fetch_theqoo():
+    """더쿠 hot 크롤링 (requests 기반)."""
+    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://theqoo.net/"}
+    results, seen = [], set()
+    try:
+        r = req_lib.get("https://theqoo.net/hot", headers=headers, timeout=8)
+        r.encoding = r.apparent_encoding
+        soup = BeautifulSoup(r.text, "html.parser")
+        for td in soup.select("td.title"):
+            a = td.select_one("a")
+            if not a:
+                continue
+            href  = a.get("href", "")
+            title = a.get_text(strip=True)
+            if href.startswith("/event") or href.startswith("/ad"):
+                continue
+            if not title or len(title) < 3 or title in seen:
+                continue
+            if _NOTICE_PAT.search(title):
+                continue
+            seen.add(title)
+            if is_filtered(title):
+                continue
+            full_href = "https://theqoo.net" + href if href.startswith("/") else href
+            tr = td.parent
+            rec_el = tr.select_one(".m_no") if tr else None
+            results.append({
+                "title": title,
+                "url":   full_href,
+                "date":  "",
+                "recommend": rec_el.get_text(strip=True) if rec_el else "",
+                "source": "더쿠",
+            })
+            if len(results) >= 40:
+                break
+    except Exception:
+        pass
+    return results
+
+
+async def _fetch_ruliweb_classified():
+    loop = asyncio.get_event_loop()
+    posts = await loop.run_in_executor(None, _fetch_ruliweb)
+    tagged, _ = await _ai_filter_posts(posts)
+    return tagged, 0
+
+
+async def _fetch_theqoo_classified():
+    loop = asyncio.get_event_loop()
+    posts = await loop.run_in_executor(None, _fetch_theqoo)
+    tagged, _ = await _ai_filter_posts(posts)
+    return tagged, 0
+
+
 def _translate_ko(text):
     try:
         r = req_lib.get(
@@ -656,12 +757,14 @@ def api_feed():
     import random as _random
     try:
         force = request.args.get("refresh") == "1"
-        fm_posts, fetched_at, fm_filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
-        udt_posts, _, udt_filtered = get_cached("udt", force=force, async_fn=_fetch_ohmyhumor_classified)
-        arca_posts, _, arca_filtered = get_cached("arca", force=force, async_fn=_scrape_arca_classified)
-        combined = fm_posts + udt_posts + arca_posts
+        fm_posts,   fetched_at, fm_filtered  = get_cached("humor",   force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
+        udt_posts,  _, udt_filtered          = get_cached("udt",     force=force, async_fn=_fetch_ohmyhumor_classified)
+        ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
+        qoo_posts,  _, qoo_filtered          = get_cached("qoo",     force=force, async_fn=_fetch_theqoo_classified)
+        arca_posts, _, arca_filtered         = get_cached("arca",    force=force, async_fn=_scrape_arca_classified)
+        combined = fm_posts + udt_posts + ruli_posts + qoo_posts + arca_posts
         _random.shuffle(combined)
-        total_filtered = fm_filtered + udt_filtered + arca_filtered
+        total_filtered = fm_filtered + udt_filtered + ruli_filtered + qoo_filtered + arca_filtered
         return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -928,30 +1031,25 @@ def api_yt_channels():
 
 def _prewarm():
     time.sleep(1)
-    try:
-        result = _run_async(_scrape(HUMOR_URL, pages=2))
-        posts, filtered = result if isinstance(result, tuple) else (result, 0)
-        with _lock:
-            _cache["humor"] = {
-                "posts": posts,
-                "filtered": filtered,
-                "timestamp": time.time(),
-                "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
-            }
-    except Exception:
-        pass
-    try:
-        result = _run_async(_fetch_ohmyhumor_classified())
-        posts, filtered = result if isinstance(result, tuple) else (result, 0)
-        with _lock:
-            _cache["udt"] = {
-                "posts": posts,
-                "filtered": filtered,
-                "timestamp": time.time(),
-                "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
-            }
-    except Exception:
-        pass
+    tasks = [
+        ("humor", lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
+        ("udt",   lambda: _run_async(_fetch_ohmyhumor_classified())),
+        ("ruli",  lambda: _run_async(_fetch_ruliweb_classified())),
+        ("qoo",   lambda: _run_async(_fetch_theqoo_classified())),
+    ]
+    for key, fn in tasks:
+        try:
+            result = fn()
+            posts, filtered = result if isinstance(result, tuple) else (result, 0)
+            with _lock:
+                _cache[key] = {
+                    "posts": posts,
+                    "filtered": filtered,
+                    "timestamp": time.time(),
+                    "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+                }
+        except Exception:
+            pass
 
 threading.Thread(target=_prewarm, daemon=True).start()
 
