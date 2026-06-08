@@ -204,16 +204,24 @@ function esc(s) {
 }
 
 /* IntersectionObserver로 뷰포트 근처 카드만 썸네일 요청 */
-const io = new IntersectionObserver(entries => {
-  entries.forEach(e => {
-    if (!e.isIntersecting) return;
-    const card = e.target;
-    io.unobserve(card);
-    loadThumb(card);
-  });
-}, { rootMargin: '400px' });
+/* 동시 요청 수 제한 — 많으면 fmkorea 봇 탐지 */
+let _thumbRunning = 0;
+const THUMB_CONCURRENCY = 3;
+const _thumbQueue = [];
 
-async function loadThumb(card) {
+function _drainThumb() {
+  while (_thumbRunning < THUMB_CONCURRENCY && _thumbQueue.length > 0) {
+    const { card, resolve } = _thumbQueue.shift();
+    _thumbRunning++;
+    _doLoadThumb(card).finally(() => {
+      _thumbRunning--;
+      resolve();
+      _drainThumb();
+    });
+  }
+}
+
+async function _doLoadThumb(card) {
   const postUrl = card.dataset.url;
   const skel    = card.querySelector('.skeleton');
   const twrap   = card.querySelector('.thumb-wrap');
@@ -234,6 +242,22 @@ async function loadThumb(card) {
     card.remove();
   }
 }
+
+function loadThumb(card) {
+  return new Promise(resolve => {
+    _thumbQueue.push({ card, resolve });
+    _drainThumb();
+  });
+}
+
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    const card = e.target;
+    io.unobserve(card);
+    loadThumb(card);
+  });
+}, { rootMargin: '200px' });
 
 function makeCard(post) {
   const card = document.createElement('div');

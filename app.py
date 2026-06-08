@@ -10,7 +10,10 @@ from urllib.parse import quote
 import requests as req_lib
 from flask import Flask, render_template, jsonify, request
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
 from bs4 import BeautifulSoup
+
+_stealth = Stealth()
 
 app = Flask(__name__)
 
@@ -178,6 +181,7 @@ async def _scrape_page(browser, url, extra_filter=None):
         },
     )
     page = await ctx.new_page()
+    await _stealth.apply_stealth_async(page)
     async def handle_route(route):
         if route.request.resource_type in ("image", "font", "media", "stylesheet"):
             await route.abort()
@@ -186,7 +190,7 @@ async def _scrape_page(browser, url, extra_filter=None):
     await page.route("**/*", handle_route)
     await page.goto(url, wait_until="domcontentloaded")
     try:
-        await page.wait_for_selector("table.bd_lst tr", timeout=4000)
+        await page.wait_for_selector("table.bd_lst tr", timeout=5000)
     except Exception:
         pass
     html = await page.content()
@@ -397,6 +401,7 @@ async def _fetch_thumb_async(post_url):
         locale="ko-KR",
     )
     page = await ctx.new_page()
+    await _stealth.apply_stealth_async(page)
     async def handle_route(route):
         if route.request.resource_type in ("font", "stylesheet", "media"):
             await route.abort()
@@ -493,6 +498,7 @@ async def _scrape_arca_page(browser, url):
         locale="ko-KR",
     )
     page = await ctx.new_page()
+    await _stealth.apply_stealth_async(page)
     async def handle_route(route):
         if route.request.resource_type in ("image", "font", "media", "stylesheet"):
             await route.abort()

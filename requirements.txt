@@ -1,5 +1,6 @@
 flask
 playwright
+playwright-stealth
 beautifulsoup4
 requests
 gunicorn
