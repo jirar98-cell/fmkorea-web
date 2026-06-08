@@ -233,12 +233,13 @@ async def _scrape_page(browser, url, extra_filter=None):
         results.append({
             "title": title, "url": href, "date": time_text,
             "views": views_text, "recommend": voted_text,
+            "source": "펨코",
         })
     return results, filtered_count
 
 
 async def _ai_filter_posts(posts):
-    """AI로 게시물 필터링. drop 판정은 제외하고 반환."""
+    """AI로 게시물 카테고리 분류. 전부 통과, category 필드 추가."""
     if not _sf_available or not posts:
         return posts, 0
 
@@ -253,18 +254,15 @@ async def _ai_filter_posts(posts):
                 )
                 return result
             except Exception:
-                return {"verdict": "pass"}
+                return {"category": "유머"}
 
     scores = await asyncio.gather(*[_score_one(p) for p in posts])
-    kept, ai_dropped = [], 0
+    tagged = []
     for post, score in zip(posts, scores):
-        if score.get("verdict") == "drop":
-            ai_dropped += 1
-        else:
-            post_copy = dict(post)
-            post_copy["content_type"] = score.get("type", "humor")
-            kept.append(post_copy)
-    return kept, ai_dropped
+        post_copy = dict(post)
+        post_copy["category"] = score.get("category", "유머")
+        tagged.append(post_copy)
+    return tagged, 0
 
 
 async def _scrape(url, extra_filter=None, pages=1):
@@ -448,7 +446,7 @@ def _fetch_ohmyhumor():
             href = "http://www.todayhumor.co.kr" + href
         if is_filtered(title):
             continue
-        results.append({"title": title, "url": href, "date": ""})
+        results.append({"title": title, "url": href, "date": "", "source": "오유"})
         if len(results) >= 40:
             break
     return results
@@ -526,7 +524,7 @@ async def _scrape_arca_page(browser, url):
         recommend = rate_el.get_text(strip=True) if rate_el else ""
 
         results.append({"title": title, "url": href, "date": date_text,
-                        "views": views, "recommend": recommend})
+                        "views": views, "recommend": recommend, "source": "아카"})
     return results
 
 
@@ -606,8 +604,24 @@ def index():
 def api_humor():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at, filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=3))
+        posts, fetched_at, filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
         return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/feed")
+def api_feed():
+    """여러 커뮤니티 소스 합산 피드."""
+    import random as _random
+    try:
+        force = request.args.get("refresh") == "1"
+        fm_posts, fetched_at, fm_filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
+        udt_posts, _, udt_filtered = get_cached_sync("udt", _fetch_ohmyhumor, force)
+        combined = fm_posts + udt_posts
+        _random.shuffle(combined)
+        total_filtered = fm_filtered + udt_filtered
+        return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

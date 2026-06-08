@@ -24,41 +24,33 @@ client = OpenAI(
 # 무료 · 빠름 · 품질 충분. 더 빠르게 하려면 "llama-3.1-8b-instant"
 MODEL_FAST = "llama-3.1-8b-instant"
 
-SYSTEM_PROMPT = """너는 유튜브 쇼츠/릴스 소재를 선별하는 AI 큐레이터다.
-펨코 게시물 제목을 보고 유튜브에서 클릭·공유될 만한 소재인지 판단해라.
+CATEGORIES = ["유머", "감동", "드라마", "영화", "스포츠", "정치", "아이돌"]
 
-[pass — 유튜브 소재로 좋은 것]
-유머류: 웃긴 상황, 예상치 못한 반전, 충격적인 장면, 귀여운 동물/사람, 어이없는 상황
-정보류: 놀라운 사실, 신기한 통계, 흥미로운 발견, "실화냐?" 반응 나올 내용
-비주얼: 이미지·영상·짤이 있을 것 같고 눈길 끌 만한 것
+SYSTEM_PROMPT = f"""너는 한국 커뮤니티 게시물 분류 AI다.
+게시물 제목을 보고 가장 적합한 카테고리 하나를 선택해라.
 
-[drop — 소재로 안 되는 것]
-- 정치, 시위, 탄핵, 계엄, 뉴스, 사회이슈
-- "오늘 ~했다", "친구가 ~함" 식 평범한 개인 에피소드
-- 질문글, 일반 잡담, 공지, 평범한 일상 이야기
-- 텍스트만 있는 커뮤니티 논쟁
-
-판정 기준: 유튜브 알고리즘에서 클릭/공유될 것 같으면 pass. 아니면 drop.
+카테고리 정의:
+- 유머: 웃긴 상황, 짤, 움짤, 어이없는 일, 동물 유머
+- 감동: 훈훈한 이야기, 감동 사연, 선행, 힐링
+- 드라마: 드라마틱한 반전, 충격 실화, 갈등·분쟁 스토리
+- 영화: 영화·드라마·애니·웹툰·게임 콘텐츠
+- 스포츠: 스포츠 경기·선수·하이라이트·기록
+- 정치: 정치·사회이슈·시사·뉴스
+- 아이돌: 아이돌·연예인·K-POP·팬덤
 
 반드시 아래 JSON만 출력. 다른 말, 마크다운 절대 금지.
-{"verdict": "pass" or "drop", "type": "humor" or "info", "reason": "<한 줄>"}
-
-type 규칙 (verdict가 pass일 때만 의미 있음):
-- humor: 웃긴 상황·반응·귀여운 것
-- info: 놀라운 사실·정보·신기한 내용"""
+{{"category": "유머|감동|드라마|영화|스포츠|정치|아이돌"}}"""
 
 
 def score_material(title: str, content: str = "", url: str | None = None,
                    use_search: bool = False) -> dict:
-    """제목을 읽고 pass/drop 판정 반환."""
-    user_text = f"제목: {title}"
-
+    """제목을 읽고 카테고리 분류 반환."""
     resp = client.chat.completions.create(
         model=MODEL_FAST,
-        max_tokens=128,
+        max_tokens=64,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": user_text},
+            {"role": "user",   "content": f"제목: {title}"},
         ],
     )
 
@@ -68,10 +60,10 @@ def score_material(title: str, content: str = "", url: str | None = None,
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        return {"verdict": "pass", "reason": "parse_failed"}
+        return {"category": "유머"}
 
-    if data.get("verdict") not in ("pass", "drop"):
-        data["verdict"] = "pass"
+    if data.get("category") not in CATEGORIES:
+        data["category"] = "유머"
     return data
 
 

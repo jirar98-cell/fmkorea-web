@@ -12,75 +12,79 @@
       --text: #e8e8e8;
       --muted: #5a5a5a;
       --accent: #3b82f6;
-      --green: #22c55e;
     }
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
       background: var(--bg);
       color: var(--text);
       font-family: -apple-system, 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-      min-height: 100vh;
     }
 
-    /* ── Header ──────────────────────────────── */
+    /* ── Header ─────────────────────────────── */
     .header {
-      position: sticky; top: 0; z-index: 20;
-      display: flex; align-items: center; gap: 10px;
-      padding: 11px 20px;
-      background: rgba(13,13,13,0.88);
+      position: sticky; top: 0; z-index: 30;
+      background: rgba(13,13,13,0.92);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
 
-    .logo {
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-      color: var(--text);
-      white-space: nowrap;
+    .header-top {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px 0;
     }
 
-    .badge {
-      font-size: 12px;
-      padding: 3px 9px;
-      border-radius: 20px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      white-space: nowrap;
+    .logo { font-size: 15px; font-weight: 700; }
+
+    .cnt-badge {
+      font-size: 12px; color: var(--muted);
+      padding: 2px 8px; border-radius: 20px;
+      background: var(--surface); border: 1px solid var(--border);
     }
-    .badge.green { color: var(--green); border-color: #1a3a24; background: #0d1f12; }
 
     .spacer { flex: 1; }
 
     .refresh-btn {
-      display: flex; align-items: center; gap: 6px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 6px 13px;
-      border-radius: 7px;
-      cursor: pointer;
-      font-size: 13px;
-      white-space: nowrap;
-      transition: background 0.12s, transform 0.08s;
+      display: flex; align-items: center; gap: 5px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 5px 12px; border-radius: 6px;
+      cursor: pointer; font-size: 12px;
+      transition: background 0.12s;
     }
     .refresh-btn:hover { background: #222; }
-    .refresh-btn:active { transform: scale(0.96); }
     .refresh-btn.loading .icon { display: inline-block; animation: spin 0.7s linear infinite; }
-
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Category tabs ───────────────────────── */
+    .cats {
+      display: flex; gap: 4px;
+      padding: 8px 16px 10px;
+      overflow-x: auto;
+      -ms-overflow-style: none; scrollbar-width: none;
+    }
+    .cats::-webkit-scrollbar { display: none; }
+
+    .cat-btn {
+      flex-shrink: 0;
+      padding: 5px 13px;
+      border-radius: 20px;
+      font-size: 12.5px; font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+    .cat-btn:hover { border-color: #555; color: var(--text); }
+    .cat-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     /* ── Grid ─────────────────────────────────── */
     .grid {
       columns: 4 220px;
       column-gap: 10px;
-      padding: 14px 16px 40px;
+      padding: 12px 16px 40px;
     }
-
     @media (max-width: 540px) {
       .grid { columns: 2 140px; column-gap: 8px; padding: 10px 10px 30px; }
     }
@@ -96,30 +100,19 @@
       border: 1px solid var(--border);
       transition: transform 0.15s, box-shadow 0.15s;
     }
-
     .card:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-      border-color: #3a3a3a;
     }
+    .card.hidden { display: none; }
 
-    .thumb-wrap {
-      position: relative;
-      width: 100%;
-      background: #1a1a1a;
-      overflow: hidden;
-    }
+    .thumb-wrap { width: 100%; background: #1a1a1a; overflow: hidden; }
 
-    .thumb {
-      width: 100%;
-      display: block;
-      object-fit: cover;
-    }
+    .thumb { width: 100%; display: block; object-fit: cover; }
 
     .skeleton {
-      width: 100%;
-      height: 150px;
-      background: linear-gradient(90deg, #1a1a1a 0%, #242424 50%, #1a1a1a 100%);
+      width: 100%; height: 148px;
+      background: linear-gradient(90deg, #1a1a1a 0%, #232323 50%, #1a1a1a 100%);
       background-size: 200% 100%;
       animation: shimmer 1.4s ease infinite;
     }
@@ -128,24 +121,10 @@
       100% { background-position:  200% 0; }
     }
 
-    .card-body { padding: 9px 11px 11px; }
-
-    .type-badge {
-      display: inline-block;
-      font-size: 10.5px;
-      font-weight: 600;
-      padding: 2px 7px;
-      border-radius: 4px;
-      margin-bottom: 5px;
-      letter-spacing: 0.2px;
-    }
-    .type-humor { background: #2d2200; color: #fbbf24; }
-    .type-info  { background: #0f1e38; color: #60a5fa; }
+    .card-body { padding: 9px 11px 10px; }
 
     .card-title {
-      font-size: 13px;
-      line-height: 1.45;
-      font-weight: 500;
+      font-size: 13px; line-height: 1.45; font-weight: 500;
       color: #d8d8d8;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -153,44 +132,73 @@
       overflow: hidden;
     }
 
-    .card-meta {
-      font-size: 11.5px;
-      color: var(--muted);
-      margin-top: 5px;
+    .card-footer {
+      display: flex; align-items: center; gap: 6px;
+      margin-top: 6px; flex-wrap: wrap;
     }
 
-    /* ── State messages ──────────────────────── */
+    .cat-tag {
+      font-size: 10px; font-weight: 700;
+      padding: 2px 6px; border-radius: 3px;
+      letter-spacing: 0.2px;
+    }
+    .source-tag {
+      font-size: 10px; color: var(--muted);
+      padding: 2px 6px; border-radius: 3px;
+      background: #1e1e1e; border: 1px solid #2e2e2e;
+    }
+    .rec {
+      font-size: 11px; color: #e87070;
+      margin-left: auto;
+    }
+    .date-text { font-size: 11px; color: var(--muted); }
+
+    /* category colors */
+    .cat-유머  { background:#2d2200; color:#fbbf24; }
+    .cat-감동  { background:#0f2d1f; color:#4ade80; }
+    .cat-드라마 { background:#2d0f1f; color:#f472b6; }
+    .cat-영화  { background:#1a0f2d; color:#a78bfa; }
+    .cat-스포츠 { background:#0f1e2d; color:#38bdf8; }
+    .cat-정치  { background:#2d1a0f; color:#fb923c; }
+    .cat-아이돌 { background:#2d0f2d; color:#e879f9; }
+
+    /* ── State ─────────────────────────────────── */
     .state-wrap {
-      column-span: all;
-      text-align: center;
-      padding: 80px 20px;
-      color: var(--muted);
+      column-span: all; text-align: center;
+      padding: 70px 20px; color: var(--muted);
     }
-
     .spinner {
       width: 28px; height: 28px;
-      border: 2.5px solid #2a2a2a;
-      border-top-color: var(--accent);
+      border: 2.5px solid #2a2a2a; border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.75s linear infinite;
       margin: 0 auto 14px;
     }
-
     .state-wrap p { font-size: 14px; }
   </style>
 </head>
 <body>
 
-<header class="header">
-  <span class="logo">소재 피드</span>
-  <span class="badge" id="cnt-badge">불러오는 중...</span>
-  <span class="badge green" id="ai-badge" style="display:none">AI 필터링</span>
-  <span class="spacer"></span>
-  <button class="refresh-btn" id="refresh-btn" onclick="load(true)">
-    <span class="icon">↻</span>
-    <span>새로고침</span>
-  </button>
-</header>
+<div class="header">
+  <div class="header-top">
+    <span class="logo">소재 피드</span>
+    <span class="cnt-badge" id="cnt">로딩 중...</span>
+    <span class="spacer"></span>
+    <button class="refresh-btn" id="rfbtn" onclick="load(true)">
+      <span class="icon">↻</span><span>새로고침</span>
+    </button>
+  </div>
+  <div class="cats" id="cats">
+    <button class="cat-btn active" data-cat="전체">전체</button>
+    <button class="cat-btn" data-cat="유머">유머</button>
+    <button class="cat-btn" data-cat="감동">감동</button>
+    <button class="cat-btn" data-cat="드라마">드라마</button>
+    <button class="cat-btn" data-cat="영화">영화</button>
+    <button class="cat-btn" data-cat="스포츠">스포츠</button>
+    <button class="cat-btn" data-cat="정치">정치</button>
+    <button class="cat-btn" data-cat="아이돌">아이돌</button>
+  </div>
+</div>
 
 <div class="grid" id="grid">
   <div class="state-wrap"><div class="spinner"></div><p>게시물 불러오는 중...</p></div>
@@ -198,84 +206,99 @@
 
 <script>
 function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-/* IntersectionObserver로 뷰포트 근처 카드만 썸네일 요청 */
-/* 동시 요청 수 제한 — 많으면 fmkorea 봇 탐지 */
-let _thumbRunning = 0;
-const THUMB_CONCURRENCY = 3;
-const _thumbQueue = [];
+/* ── 썸네일 큐 (최대 3 동시) ─────────────────── */
+let _running = 0;
+const MAX = 3;
+const _queue = [];
 
-function _drainThumb() {
-  while (_thumbRunning < THUMB_CONCURRENCY && _thumbQueue.length > 0) {
-    const { card, resolve } = _thumbQueue.shift();
-    _thumbRunning++;
-    _doLoadThumb(card).finally(() => {
-      _thumbRunning--;
-      resolve();
-      _drainThumb();
-    });
+function _drain() {
+  while (_running < MAX && _queue.length > 0) {
+    const { card, resolve } = _queue.shift();
+    _running++;
+    _doThumb(card).finally(() => { _running--; resolve(); _drain(); });
   }
 }
 
-async function _doLoadThumb(card) {
-  const postUrl = card.dataset.url;
-  const skel    = card.querySelector('.skeleton');
-  const twrap   = card.querySelector('.thumb-wrap');
-  if (!postUrl || !twrap) return;
-
+async function _doThumb(card) {
+  const url   = card.dataset.url;
+  const skel  = card.querySelector('.skeleton');
+  const twrap = card.querySelector('.thumb-wrap');
+  if (!url || !twrap) return;
   try {
-    const res = await fetch(`/api/thumb?url=${encodeURIComponent(postUrl)}`);
-    const d   = await res.json();
-    if (!d.img) { card.remove(); return; }
-
+    const r = await fetch(`/api/thumb?url=${encodeURIComponent(url)}`);
+    const d = await r.json();
+    if (!d.img) { twrap.remove(); return; }
     const img = document.createElement('img');
-    img.className = 'thumb';
-    img.alt = '';
+    img.className = 'thumb'; img.alt = '';
     img.onload  = () => { if (skel) skel.remove(); twrap.appendChild(img); };
-    img.onerror = () => { card.remove(); };
+    img.onerror = () => { twrap.remove(); };
     img.src = d.img;
-  } catch {
-    card.remove();
-  }
+  } catch { twrap.remove(); }
 }
 
 function loadThumb(card) {
-  return new Promise(resolve => {
-    _thumbQueue.push({ card, resolve });
-    _drainThumb();
-  });
+  return new Promise(r => { _queue.push({ card, resolve: r }); _drain(); });
 }
 
 const io = new IntersectionObserver(entries => {
   entries.forEach(e => {
     if (!e.isIntersecting) return;
-    const card = e.target;
-    io.unobserve(card);
-    loadThumb(card);
+    io.unobserve(e.target);
+    loadThumb(e.target);
   });
 }, { rootMargin: '200px' });
 
+/* ── 카테고리 필터 ─────────────────────────────── */
+let _activeCat = '전체';
+
+document.getElementById('cats').addEventListener('click', e => {
+  const btn = e.target.closest('.cat-btn');
+  if (!btn) return;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _activeCat = btn.dataset.cat;
+  filterCards();
+});
+
+function filterCards() {
+  document.querySelectorAll('.card').forEach(card => {
+    const match = _activeCat === '전체' || card.dataset.cat === _activeCat;
+    card.classList.toggle('hidden', !match);
+  });
+  updateCount();
+}
+
+function updateCount() {
+  const visible = document.querySelectorAll('.card:not(.hidden)').length;
+  document.getElementById('cnt').textContent = `${visible}개`;
+}
+
+/* ── 카드 생성 ──────────────────────────────── */
 function makeCard(post) {
   const card = document.createElement('div');
   card.className = 'card';
   card.dataset.url = post.url;
+  card.dataset.cat = post.category || '유머';
   card.onclick = () => window.open(post.url, '_blank');
 
-  const typeLabel = post.content_type === 'info' ? '정보' : '유머';
-  const typeClass = post.content_type === 'info' ? 'type-info' : 'type-humor';
+  const cat    = post.category || '유머';
+  const source = post.source   || '';
+  const rec    = post.recommend ? `♥ ${post.recommend}` : '';
+  const date   = post.date || '';
 
   card.innerHTML = `
-    <div class="thumb-wrap">
-      <div class="skeleton"></div>
-    </div>
+    <div class="thumb-wrap"><div class="skeleton"></div></div>
     <div class="card-body">
-      <span class="type-badge ${typeClass}">${typeLabel}</span>
       <div class="card-title">${esc(post.title)}</div>
-      <div class="card-meta">${esc(post.date || '')}${post.views ? ' · ' + esc(post.views) : ''}</div>
+      <div class="card-footer">
+        <span class="cat-tag cat-${esc(cat)}">${esc(cat)}</span>
+        ${source ? `<span class="source-tag">${esc(source)}</span>` : ''}
+        ${date ? `<span class="date-text">${esc(date)}</span>` : ''}
+        ${rec ? `<span class="rec">${esc(rec)}</span>` : ''}
+      </div>
     </div>
   `;
 
@@ -283,64 +306,45 @@ function makeCard(post) {
   return card;
 }
 
-let loading = false;
+/* ── 메인 로드 ──────────────────────────────── */
+let _loading = false;
 
 async function load(force = false) {
-  if (loading) return;
-  loading = true;
-
-  const btn  = document.getElementById('refresh-btn');
-  const cnt  = document.getElementById('cnt-badge');
+  if (_loading) return;
+  _loading = true;
+  const btn  = document.getElementById('rfbtn');
   const grid = document.getElementById('grid');
-
   btn.classList.add('loading');
-  cnt.textContent = '불러오는 중...';
+  document.getElementById('cnt').textContent = '로딩 중...';
   grid.innerHTML = '<div class="state-wrap"><div class="spinner"></div><p>게시물 불러오는 중...</p></div>';
 
   try {
-    const res  = await fetch(force ? '/api/humor?refresh=1' : '/api/humor');
+    const res  = await fetch(force ? '/api/feed?refresh=1' : '/api/feed');
     const data = await res.json();
-
     if (data.error) {
       grid.innerHTML = `<div class="state-wrap"><p>오류: ${esc(data.error)}</p></div>`;
-      cnt.textContent = '오류';
+      document.getElementById('cnt').textContent = '오류';
       return;
     }
-
     const posts = data.posts || [];
-    cnt.textContent = posts.length
-      ? `${posts.length}개 · ${data.fetched_at}`
-      : '0개';
-
     grid.innerHTML = '';
-
     if (!posts.length) {
-      grid.innerHTML = '<div class="state-wrap"><p>표시할 게시물이 없습니다</p></div>';
+      grid.innerHTML = '<div class="state-wrap"><p>게시물이 없습니다</p></div>';
+      document.getElementById('cnt').textContent = '0개';
       return;
     }
-
     const frag = document.createDocumentFragment();
     posts.forEach(p => frag.appendChild(makeCard(p)));
     grid.appendChild(frag);
-
+    filterCards();
   } catch (e) {
     grid.innerHTML = `<div class="state-wrap"><p>불러오기 실패: ${esc(e.message)}</p></div>`;
-    cnt.textContent = '오류';
   } finally {
     btn.classList.remove('loading');
-    loading = false;
+    _loading = false;
   }
 }
 
-async function checkAI() {
-  try {
-    const r = await fetch('/api/score_available');
-    const d = await r.json();
-    document.getElementById('ai-badge').style.display = d.available ? '' : 'none';
-  } catch {}
-}
-
-checkAI();
 load();
 </script>
 </body>
