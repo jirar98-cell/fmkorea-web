@@ -37,6 +37,20 @@ FILTER_KEYWORDS = {
     "위해": [
         "자살", "자해", "폭발물", "테러", "마약", "살인", "폭행", "살해",
     ],
+    "정치": [
+        "선거", "투표", "탄핵", "대선", "총선", "재선거", "보선",
+        "여당", "야당", "좌파", "우파", "부정선거", "계엄", "당선",
+        "민주당", "국민의힘", "더불어민주", "국힘", "진보당",
+        "이재명", "윤석열", "오세훈", "박근혜", "문재인",
+        "김부겸", "한동훈", "이준석", "안철수", "대구경북",
+        "복위", "503번",
+    ],
+    "군사방산": [
+        "방산", "포대", "미사일", "전투기", "천궁", "전쟁기념관",
+    ],
+    "뉴스기사": [
+        "속보", "단독", "사퇴", "사임", "기소", "구속영장",
+    ],
 }
 
 _FILTER_PATTERNS = []
@@ -538,7 +552,7 @@ def _fetch_ohmyhumor():
             href = "http://www.todayhumor.co.kr" + href
         if is_filtered(title):
             continue
-        rec_el = row.select_one("td.recommend_cnt")
+        rec_el = row.select_one("td.oknok")
         rec = rec_el.get_text(strip=True) if rec_el else ""
         results.append({"title": title, "url": href, "date": "", "recommend": rec, "source": "오유"})
         if len(results) >= 40:
@@ -562,7 +576,6 @@ def _fetch_ruliweb():
     """루리웹 베스트 게시판 크롤링 (requests 기반)."""
     boards = [
         ("https://bbs.ruliweb.com/best/board/300148", "루리웹"),  # 유머
-        ("https://bbs.ruliweb.com/best/board/300143", "루리웹"),  # 연예
     ]
     headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://bbs.ruliweb.com/"}
     results, seen = [], set()
@@ -784,11 +797,16 @@ def _fetch_boredpanda_section(url, pre_cat):
             if not title_en or not href.startswith("https://www.boredpanda.com/"):
                 continue
             title_ko = _translate_ko(title_en)
+            pts_el = article.select_one(".points-only-digits")
+            pts = pts_el.get_text(strip=True) if pts_el else ""
+            img_el = article.select_one("img")
+            img_src = img_el.get("src", "") if img_el else ""
             results.append({
                 "title":    title_ko,
                 "url":      href,
                 "date":     "",
-                "recommend": "",
+                "recommend": pts,
+                "img":      img_src,
                 "source":   "BP",
                 "category": pre_cat,
             })
@@ -876,12 +894,14 @@ def api_feed():
     try:
         force = request.args.get("refresh") == "1"
         fm_posts,   fetched_at, fm_filtered  = get_cached("humor",   force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
-        udt_posts,  _, udt_filtered          = get_cached("udt",     force=force, async_fn=_fetch_ohmyhumor_classified)
         ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
         bp_posts,   _, bp_filtered           = get_cached("bp",      force=force, async_fn=_fetch_boredpanda_classified)
-        combined = fm_posts + udt_posts + ruli_posts + bp_posts
+        combined = fm_posts + ruli_posts + bp_posts
+        # 기타 카테고리 + 낮은 반응 제외
+        combined = [p for p in combined if p.get("category") != "기타"]
+        combined = [p for p in combined if _parse_rec(p.get("recommend", 0)) >= 5 or not p.get("recommend")]
         combined.sort(key=lambda p: _parse_rec(p.get("recommend", 0)), reverse=True)
-        total_filtered = fm_filtered + udt_filtered + ruli_filtered + bp_filtered
+        total_filtered = fm_filtered + ruli_filtered + bp_filtered
         return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1150,7 +1170,6 @@ def _prewarm():
     time.sleep(1)
     tasks = [
         ("humor", lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
-        ("udt",   lambda: _run_async(_fetch_ohmyhumor_classified())),
         ("ruli",  lambda: _run_async(_fetch_ruliweb_classified())),
         ("bp",    lambda: _run_async(_fetch_boredpanda_classified())),
     ]
