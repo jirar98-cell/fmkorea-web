@@ -282,6 +282,16 @@ async def _scrape(url, extra_filter=None, pages=1):
             if post["url"] not in seen:
                 seen.add(post["url"])
                 results.append(post)
+
+    # 0개면 봇 감지 가능성 — 잠시 대기 후 첫 페이지만 재시도
+    if not results:
+        await asyncio.sleep(3)
+        retry_posts, retry_fc = await _scrape_page(browser, page_urls[0], extra_filter)
+        total_filtered += retry_fc
+        for post in retry_posts:
+            if post["url"] not in seen:
+                seen.add(post["url"])
+                results.append(post)
     results, ai_dropped = await _ai_filter_posts(results)
     return results, total_filtered + ai_dropped
 
