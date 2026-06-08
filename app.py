@@ -173,23 +173,8 @@ def _run_async(coro):
     return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=60)
 
 
-async def _scrape_page(browser, url, extra_filter=None):
-    page = await browser.new_page()
-    await _stealth.apply_stealth_async(page)
-    async def handle_route(route):
-        if route.request.resource_type in ("image", "font", "media", "stylesheet"):
-            await route.abort()
-        else:
-            await route.continue_()
-    await page.route("**/*", handle_route)
-    await page.goto(url, wait_until="domcontentloaded")
-    try:
-        await page.wait_for_selector("table.bd_lst tr", timeout=5000)
-    except Exception:
-        pass
-    html = await page.content()
-    await page.close()
-
+def _parse_fmkorea_html(html, extra_filter=None):
+    """펨코 HTML → 게시물 리스트 파싱."""
     soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
     filtered_count = 0
@@ -198,7 +183,7 @@ async def _scrape_page(browser, url, extra_filter=None):
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
-        href = title_el.get("href", "")
+        href  = title_el.get("href", "")
         if not title or len(title) < 3:
             continue
         if href and not href.startswith("http"):
@@ -211,33 +196,77 @@ async def _scrape_page(browser, url, extra_filter=None):
             continue
         if extra_filter and not extra_filter(title):
             continue
-
         time_cell = row.select_one("td.time")
         time_text = _relative_time(time_cell.get_text(strip=True)) if time_cell else ""
-
         views_text = ""
         for td in row.select("td.m_no"):
             if "m_no_voted" not in (td.get("class") or []):
                 views_text = td.get_text(strip=True)
                 break
-
         voted_cell = row.select_one("td.m_no_voted")
         voted_text = voted_cell.get_text(strip=True) if voted_cell else ""
-
         try:
             voted_num = int(voted_text.replace(",", "")) if voted_text else 0
         except ValueError:
             voted_num = 0
-
         if voted_cell and voted_num < 1:
             continue
-
         results.append({
             "title": title, "url": href, "date": time_text,
             "views": views_text, "recommend": voted_text,
             "source": "펨코",
         })
     return results, filtered_count
+
+
+_cffi_session = None
+
+def _get_cffi_session():
+    global _cffi_session
+    if _cffi_session is None:
+        try:
+            from curl_cffi import requests as _cffi_lib
+            _cffi_session = _cffi_lib.Session(impersonate="chrome124")
+        except Exception:
+            pass
+    return _cffi_session
+
+
+def _fetch_fmkorea_light(url, extra_filter=None):
+    """curl_cffi Chrome 핑거프린트로 펨코 스크래핑 (Playwright 불필요)."""
+    session = _get_cffi_session()
+    if session is None:
+        return [], 0
+    try:
+        r = session.get(url, headers={"Accept-Language": "ko-KR,ko;q=0.9"}, timeout=15)
+        if r.status_code != 200:
+            return [], 0
+        if "보안시스템" in r.text[:2000]:
+            return [], 0
+        return _parse_fmkorea_html(r.text, extra_filter)
+    except Exception:
+        return [], 0
+
+
+async def _scrape_page(browser, url, extra_filter=None):
+    """Playwright fallback scraper (curl_cffi 실패 시 사용)."""
+    page = await browser.new_page()
+    await _stealth.apply_stealth_async(page)
+    async def handle_route(route):
+        if route.request.resource_type in ("image", "font", "media", "stylesheet"):
+            await route.abort()
+        else:
+            await route.continue_()
+    await page.route("**/*", handle_route)
+    await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+    await page.wait_for_timeout(3000)
+    try:
+        await page.wait_for_selector("table.bd_lst tr", timeout=5000)
+    except Exception:
+        pass
+    html = await page.content()
+    await page.close()
+    return _parse_fmkorea_html(html, extra_filter)
 
 
 async def _ai_filter_posts(posts):
@@ -267,28 +296,37 @@ async def _ai_filter_posts(posts):
 
 
 async def _scrape(url, extra_filter=None, pages=1):
-    browser = await _ensure_browser()
+    loop = asyncio.get_event_loop()
     page_urls = [url if pg == 1 else f"{url}?page={pg}" for pg in range(1, pages + 1)]
-    pages_data = await asyncio.gather(*[_scrape_page(browser, u, extra_filter) for u in page_urls])
     results, seen = [], set()
     total_filtered = 0
-    for page_result in pages_data:
-        page_posts, fc = page_result
+
+    # 1차: curl_cffi (빠름, Playwright 불필요)
+    for i, page_url in enumerate(page_urls):
+        if i > 0:
+            await asyncio.sleep(1)
+        posts, fc = await loop.run_in_executor(
+            None, lambda u=page_url: _fetch_fmkorea_light(u, extra_filter)
+        )
         total_filtered += fc
-        for post in page_posts:
+        for post in posts:
             if post["url"] not in seen:
                 seen.add(post["url"])
                 results.append(post)
 
-    # 0개면 봇 감지 가능성 — 잠시 대기 후 첫 페이지만 재시도
+    # 2차: curl_cffi 실패 시 Playwright fallback
     if not results:
-        await asyncio.sleep(3)
-        retry_posts, retry_fc = await _scrape_page(browser, page_urls[0], extra_filter)
-        total_filtered += retry_fc
-        for post in retry_posts:
-            if post["url"] not in seen:
-                seen.add(post["url"])
-                results.append(post)
+        browser = await _ensure_browser()
+        for i, page_url in enumerate(page_urls):
+            if i > 0:
+                await asyncio.sleep(2)
+            posts, fc = await _scrape_page(browser, page_url, extra_filter)
+            total_filtered += fc
+            for post in posts:
+                if post["url"] not in seen:
+                    seen.add(post["url"])
+                    results.append(post)
+
     results, ai_dropped = await _ai_filter_posts(results)
     return results, total_filtered + ai_dropped
 
@@ -419,9 +457,40 @@ async def _fetch_thumb_async(post_url):
     return None
 
 
+def _fetch_thumb_cffi(post_url):
+    """curl_cffi 기반 fmkorea 썸네일 추출 (빠름)."""
+    session = _get_cffi_session()
+    if session is None:
+        return None
+    try:
+        r = session.get(post_url, headers={"Accept-Language": "ko-KR"}, timeout=10)
+        if r.status_code != 200 or "보안시스템" in r.text[:2000]:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        og = soup.select_one("meta[property='og:image']")
+        if og and og.get("content", "").startswith("http"):
+            return og["content"]
+        img_el = soup.select_one(".xe_content img, .rd_body img, .document_content img")
+        if img_el:
+            src = img_el.get("src") or img_el.get("data-src") or ""
+            if src.startswith("//"):
+                src = "https:" + src
+            if src.startswith("http"):
+                return src
+    except Exception:
+        pass
+    return None
+
+
 def fetch_thumb(post_url):
     if post_url in _thumb_cache:
         return _thumb_cache[post_url]
+    # curl_cffi 먼저 시도 (빠름)
+    img_url = _fetch_thumb_cffi(post_url)
+    if img_url:
+        _thumb_cache[post_url] = img_url
+        return img_url
+    # fallback: Playwright
     try:
         img_url = _run_async(_fetch_thumb_async(post_url))
         _thumb_cache[post_url] = img_url

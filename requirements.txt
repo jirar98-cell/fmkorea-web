@@ -6,3 +6,5 @@ requests
 gunicorn
 openai
 Pillow
+curl-cffi
+cloudscraper
