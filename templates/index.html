@@ -235,7 +235,7 @@ async function _doThumb(card) {
     img.className = 'thumb'; img.alt = '';
     img.onload  = () => { if (skel) skel.remove(); twrap.appendChild(img); };
     img.onerror = () => { twrap.remove(); };
-    img.src = d.img;
+    img.src = `/api/img?url=${encodeURIComponent(d.img)}`;
   } catch { twrap.remove(); }
 }
 

@@ -89,12 +89,14 @@ _lock = threading.Lock()
 # ─── AI 소재 채점 (shorts_filter) ───────────────────────────
 _sf_available = False
 _score_fn = None
+_score_batch_fn = None
 _score_cache: dict = {}
 _score_lock = threading.Lock()
 
 try:
     if os.environ.get("GROQ_API_KEY"):
         from shorts_filter import score_material as _score_fn  # type: ignore
+        from shorts_filter import score_batch as _score_batch_fn  # type: ignore
         _sf_available = True
 except Exception as _sf_err:
     pass
@@ -239,28 +241,27 @@ async def _scrape_page(browser, url, extra_filter=None):
 
 
 async def _ai_filter_posts(posts):
-    """AI로 게시물 카테고리 분류. 전부 통과, category 필드 추가."""
+    """AI로 게시물 카테고리 배치 분류. 전부 통과, category 필드 추가."""
     if not _sf_available or not posts:
         return posts, 0
 
     loop = asyncio.get_event_loop()
-    sem = asyncio.Semaphore(10)
+    BATCH = 20
+    all_cats: list[str] = []
 
-    async def _score_one(post):
-        async with sem:
-            try:
-                result = await loop.run_in_executor(
-                    None, lambda: _score_fn(title=post["title"])
-                )
-                return result
-            except Exception:
-                return {"category": "유머"}
+    for i in range(0, len(posts), BATCH):
+        chunk = posts[i:i + BATCH]
+        titles = [p["title"] for p in chunk]
+        try:
+            cats = await loop.run_in_executor(None, lambda t=titles: _score_batch_fn(t))
+        except Exception:
+            cats = ["유머"] * len(chunk)
+        all_cats.extend(cats)
 
-    scores = await asyncio.gather(*[_score_one(p) for p in posts])
     tagged = []
-    for post, score in zip(posts, scores):
+    for post, cat in zip(posts, all_cats):
         post_copy = dict(post)
-        post_copy["category"] = score.get("category", "유머")
+        post_copy["category"] = cat
         tagged.append(post_copy)
     return tagged, 0
 
@@ -430,15 +431,37 @@ def fetch_thumb(post_url):
         return None
 
 
+def _fetch_thumb_simple(post_url):
+    """requests 기반 OG 이미지 추출 — Playwright 불필요한 사이트용."""
+    if post_url in _thumb_cache:
+        return _thumb_cache[post_url]
+    try:
+        r = req_lib.get(post_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        }, timeout=5)
+        r.encoding = r.apparent_encoding
+        soup = BeautifulSoup(r.text, "html.parser")
+        og = soup.select_one("meta[property='og:image']")
+        img = og["content"] if og and og.get("content", "").startswith("http") else None
+        _thumb_cache[post_url] = img
+        return img
+    except Exception:
+        _thumb_cache[post_url] = None
+        return None
+
+
 def _fetch_ohmyhumor():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"}
     r = req_lib.get(OHMYHUMOR_URL, headers=headers, timeout=10)
     r.encoding = r.apparent_encoding
     soup = BeautifulSoup(r.text, "html.parser")
     results, seen = [], set()
-    for post in soup.select("td.subject a")[:60]:
-        title = post.get_text(strip=True)
-        href  = post.get("href", "")
+    for row in soup.select("tr.humor_best_list, tbody tr"):
+        subj = row.select_one("td.subject a")
+        if not subj:
+            continue
+        title = subj.get_text(strip=True)
+        href  = subj.get("href", "")
         if not title or len(title) < 3 or title in seen:
             continue
         seen.add(title)
@@ -446,10 +469,20 @@ def _fetch_ohmyhumor():
             href = "http://www.todayhumor.co.kr" + href
         if is_filtered(title):
             continue
-        results.append({"title": title, "url": href, "date": "", "source": "오유"})
+        rec_el = row.select_one("td.recommend_cnt")
+        rec = rec_el.get_text(strip=True) if rec_el else ""
+        results.append({"title": title, "url": href, "date": "", "recommend": rec, "source": "오유"})
         if len(results) >= 40:
             break
     return results
+
+
+async def _fetch_ohmyhumor_classified():
+    """오유 크롤링 + AI 카테고리 분류."""
+    loop = asyncio.get_event_loop()
+    posts = await loop.run_in_executor(None, _fetch_ohmyhumor)
+    tagged, _ = await _ai_filter_posts(posts)
+    return tagged, 0
 
 
 def _translate_ko(text):
@@ -530,7 +563,7 @@ async def _scrape_arca_page(browser, url):
 
 async def _scrape_arca(pages=2):
     browser = await _ensure_browser()
-    page_urls = [ARCA_URL if pg == 1 else f"{ARCA_URL}?before=9999999&p={pg}" for pg in range(1, pages + 1)]
+    page_urls = [ARCA_URL if pg == 1 else f"{ARCA_URL}?p={pg}" for pg in range(1, pages + 1)]
     pages_data = await asyncio.gather(*[_scrape_arca_page(browser, u) for u in page_urls])
     results, seen = [], set()
     for page_posts in pages_data:
@@ -539,6 +572,13 @@ async def _scrape_arca(pages=2):
                 seen.add(post["url"])
                 results.append(post)
     return results
+
+
+async def _scrape_arca_classified(pages=1):
+    """아카라이브 크롤링 + AI 카테고리 분류."""
+    results = await _scrape_arca(pages)
+    tagged, _ = await _ai_filter_posts(results)
+    return tagged, 0
 
 
 def _fetch_reddit():
@@ -617,10 +657,11 @@ def api_feed():
     try:
         force = request.args.get("refresh") == "1"
         fm_posts, fetched_at, fm_filtered = get_cached("humor", force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
-        udt_posts, _, udt_filtered = get_cached_sync("udt", _fetch_ohmyhumor, force)
-        combined = fm_posts + udt_posts
+        udt_posts, _, udt_filtered = get_cached("udt", force=force, async_fn=_fetch_ohmyhumor_classified)
+        arca_posts, _, arca_filtered = get_cached("arca", force=force, async_fn=_scrape_arca_classified)
+        combined = fm_posts + udt_posts + arca_posts
         _random.shuffle(combined)
-        total_filtered = fm_filtered + udt_filtered
+        total_filtered = fm_filtered + udt_filtered + arca_filtered
         return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -785,9 +826,45 @@ def api_score():
 @app.route("/api/thumb")
 def api_thumb():
     url = request.args.get("url", "")
-    if not url or not url.startswith("https://www.fmkorea.com"):
+    if not url or not url.startswith("http"):
         return jsonify({"img": None})
-    return jsonify({"img": fetch_thumb(url)})
+    if "fmkorea.com" in url:
+        return jsonify({"img": fetch_thumb(url)})
+    return jsonify({"img": _fetch_thumb_simple(url)})
+
+
+_img_cache: dict[str, bytes] = {}
+
+@app.route("/api/img")
+def api_img():
+    """이미지 프록시 — 원본 URL을 받아 480px JPEG 65%로 압축해 반환."""
+    from flask import Response
+    url = request.args.get("url", "")
+    if not url or not url.startswith("http"):
+        return "", 404
+    if url in _img_cache:
+        return Response(_img_cache[url], mimetype="image/jpeg")
+    try:
+        from PIL import Image
+        import io as _io
+        r = req_lib.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": url,
+        }, timeout=8)
+        r.raise_for_status()
+        img = Image.open(_io.BytesIO(r.content)).convert("RGB")
+        w, h = img.size
+        max_w = 480
+        if w > max_w:
+            img = img.resize((max_w, int(h * max_w / w)), Image.LANCZOS)
+        buf = _io.BytesIO()
+        img.save(buf, "JPEG", quality=65, optimize=True)
+        data = buf.getvalue()
+        if len(_img_cache) < 300:
+            _img_cache[url] = data
+        return Response(data, mimetype="image/jpeg")
+    except Exception:
+        return "", 404
 
 
 _YT_HEADERS = {
@@ -852,10 +929,22 @@ def api_yt_channels():
 def _prewarm():
     time.sleep(1)
     try:
-        result = _run_async(_scrape(HUMOR_URL, pages=3))
+        result = _run_async(_scrape(HUMOR_URL, pages=2))
         posts, filtered = result if isinstance(result, tuple) else (result, 0)
         with _lock:
             _cache["humor"] = {
+                "posts": posts,
+                "filtered": filtered,
+                "timestamp": time.time(),
+                "fetched_at": datetime.now().strftime("%H:%M:%S 기준"),
+            }
+    except Exception:
+        pass
+    try:
+        result = _run_async(_fetch_ohmyhumor_classified())
+        posts, filtered = result if isinstance(result, tuple) else (result, 0)
+        with _lock:
+            _cache["udt"] = {
                 "posts": posts,
                 "filtered": filtered,
                 "timestamp": time.time(),
