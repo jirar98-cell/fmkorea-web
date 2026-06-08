@@ -96,10 +96,7 @@ try:
 except Exception as _sf_err:
     pass
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
-    "Referer": "https://www.fmkorea.com",
-}
+
 
 
 def is_filtered(title):
@@ -380,23 +377,53 @@ def get_cached_sync(key, fetcher, force=False):
     return posts, _cache[key]["fetched_at"], 0
 
 
+async def _fetch_thumb_async(post_url):
+    """Playwright로 OG 이미지 또는 첫 번째 본문 이미지 추출."""
+    browser = await _ensure_browser()
+    ctx = await browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        locale="ko-KR",
+    )
+    page = await ctx.new_page()
+    async def handle_route(route):
+        if route.request.resource_type in ("font", "stylesheet", "media"):
+            await route.abort()
+        else:
+            await route.continue_()
+    await page.route("**/*", handle_route)
+    try:
+        await page.goto(post_url, wait_until="domcontentloaded", timeout=10000)
+        try:
+            await page.wait_for_selector(".xe_content img, meta[property='og:image']", timeout=3000)
+        except Exception:
+            pass
+        html = await page.content()
+    finally:
+        await ctx.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    og = soup.select_one("meta[property='og:image']")
+    if og and og.get("content", "").startswith("http"):
+        return og["content"]
+    img_el = soup.select_one(".xe_content img, .rd_body img, .document_content img")
+    if img_el:
+        img_url = (img_el.get("src") or img_el.get("data-src") or "")
+        if img_url.startswith("//"):
+            img_url = "https:" + img_url
+        if img_url.startswith("http"):
+            return img_url
+    return None
+
+
 def fetch_thumb(post_url):
     if post_url in _thumb_cache:
         return _thumb_cache[post_url]
     try:
-        r = req_lib.get(post_url, headers=_HEADERS, timeout=6)
-        soup = BeautifulSoup(r.text, "html.parser")
-        img_el = soup.select_one(".xe_content img, .rd_body img, .document_content img")
-        img_url = None
-        if img_el:
-            img_url = (img_el.get("src") or img_el.get("data-src") or img_el.get("data-lazy-src") or "")
-            if img_url.startswith("//"):
-                img_url = "https:" + img_url
-            if not img_url.startswith("http"):
-                img_url = None
+        img_url = _run_async(_fetch_thumb_async(post_url))
         _thumb_cache[post_url] = img_url
         return img_url
     except Exception:
+        _thumb_cache[post_url] = None
         return None
 
 

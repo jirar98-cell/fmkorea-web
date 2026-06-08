@@ -191,27 +191,47 @@ function esc(s) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-/* IntersectionObserver로 뷰포트 근처 썸네일만 로드 */
+/* IntersectionObserver로 뷰포트 근처 카드만 썸네일 요청 */
 const io = new IntersectionObserver(entries => {
   entries.forEach(e => {
     if (!e.isIntersecting) return;
-    const img = e.target;
-    img.src = img.dataset.src;
-    io.unobserve(img);
+    const card = e.target;
+    io.unobserve(card);
+    loadThumb(card);
   });
-}, { rootMargin: '300px' });
+}, { rootMargin: '400px' });
+
+async function loadThumb(card) {
+  const postUrl = card.dataset.url;
+  const skel    = card.querySelector('.skeleton');
+  const twrap   = card.querySelector('.thumb-wrap');
+  if (!postUrl || !twrap) return;
+
+  try {
+    const res = await fetch(`/api/thumb?url=${encodeURIComponent(postUrl)}`);
+    const d   = await res.json();
+    if (!d.img) { card.remove(); return; }
+
+    const img = document.createElement('img');
+    img.className = 'thumb';
+    img.alt = '';
+    img.onload  = () => { if (skel) skel.remove(); twrap.appendChild(img); };
+    img.onerror = () => { card.remove(); };
+    img.src = d.img;
+  } catch {
+    card.remove();
+  }
+}
 
 function makeCard(post) {
   const card = document.createElement('div');
   card.className = 'card';
+  card.dataset.url = post.url;
   card.onclick = () => window.open(post.url, '_blank');
-
-  const thumbSrc = `/api/thumb?url=${encodeURIComponent(post.url)}`;
 
   card.innerHTML = `
     <div class="thumb-wrap">
       <div class="skeleton"></div>
-      <img class="thumb" style="display:none" data-src="${esc(thumbSrc)}" alt="">
     </div>
     <div class="card-body">
       <div class="card-title">${esc(post.title)}</div>
@@ -219,14 +239,7 @@ function makeCard(post) {
     </div>
   `;
 
-  const img   = card.querySelector('img.thumb');
-  const skel  = card.querySelector('.skeleton');
-  const twrap = card.querySelector('.thumb-wrap');
-
-  img.onload  = () => { skel.remove(); img.style.display = 'block'; };
-  img.onerror = () => { twrap.remove(); };
-
-  io.observe(img);
+  io.observe(card);
   return card;
 }
 
