@@ -161,6 +161,8 @@ async def _ensure_browser():
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
+        "--disable-blink-features=AutomationControlled",
+        "--lang=ko-KR",
     ])
     return _browser
 
@@ -170,7 +172,15 @@ def _run_async(coro):
 
 
 async def _scrape_page(browser, url, extra_filter=None):
-    page = await browser.new_page()
+    ctx = await browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        locale="ko-KR",
+        extra_http_headers={
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Referer": "https://www.fmkorea.com",
+        },
+    )
+    page = await ctx.new_page()
     async def handle_route(route):
         if route.request.resource_type in ("image", "font", "media", "stylesheet"):
             await route.abort()
@@ -183,7 +193,7 @@ async def _scrape_page(browser, url, extra_filter=None):
     except Exception:
         pass
     html = await page.content()
-    await page.close()
+    await ctx.close()
 
     soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
@@ -224,7 +234,7 @@ async def _scrape_page(browser, url, extra_filter=None):
         except ValueError:
             voted_num = 0
 
-        if voted_cell and voted_num < 5:
+        if voted_cell and voted_num < 1:
             continue
 
         results.append({
@@ -439,7 +449,11 @@ def _relative_time_iso(dt_str):
 
 
 async def _scrape_arca_page(browser, url):
-    page = await browser.new_page()
+    ctx = await browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        locale="ko-KR",
+    )
+    page = await ctx.new_page()
     async def handle_route(route):
         if route.request.resource_type in ("image", "font", "media", "stylesheet"):
             await route.abort()
@@ -449,7 +463,7 @@ async def _scrape_arca_page(browser, url):
     await page.goto(url, wait_until="domcontentloaded")
     await page.wait_for_timeout(1500)
     html = await page.content()
-    await page.close()
+    await ctx.close()
 
     soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
