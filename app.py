@@ -265,7 +265,9 @@ async def _ai_filter_posts(posts):
         if score.get("verdict") == "drop":
             ai_dropped += 1
         else:
-            kept.append(post)
+            post_copy = dict(post)
+            post_copy["content_type"] = score.get("type", "humor")
+            kept.append(post_copy)
     return kept, ai_dropped
 
 
