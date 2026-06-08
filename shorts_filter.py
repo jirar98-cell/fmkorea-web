@@ -1,5 +1,5 @@
 """
-shorts_filter.py  —  Groq 무료 API 기반 커뮤니티 게시물 카테고리 분류.
+shorts_filter.py  —  Groq 무료 API 기반 게시물 카테고리 분류.
 환경변수: GROQ_API_KEY
 """
 
@@ -14,26 +14,26 @@ client = OpenAI(
 
 MODEL_FAST = "llama-3.1-8b-instant"
 
-CATEGORIES = ["유머", "감동", "드라마", "영화", "스포츠", "정치", "아이돌"]
+CATEGORIES = ["동물", "반전", "인물", "잡학", "유머", "감동", "기타"]
 
-_BATCH_PROMPT = """너는 한국 커뮤니티 게시물 분류 AI다.
+_BATCH_PROMPT = """너는 유튜브 쇼츠 소재 분류 AI다.
 번호:제목 형식의 목록을 보고 각 게시물의 카테고리를 골라라.
 
 카테고리 정의:
-- 유머: 웃긴 상황·짤·움짤·어이없는 일·동물 유머·개그
-- 감동: 훈훈한 이야기·감동 사연·선행·힐링·칭찬받은 일
-- 드라마: 반전·충격 실화·갈등·분쟁·사건사고·이슈 스토리
-- 영화: 영화·드라마·애니·웹툰·게임 콘텐츠 소개·리뷰
-- 스포츠: 스포츠 경기·선수·하이라이트·기록 (축구·야구·농구·e스포츠 포함)
-- 정치: 정치·사회이슈·시사·뉴스·정당·선거·집회
-- 아이돌: 아이돌·연예인·K-POP·팬덤·배우·예능
+- 동물: 동물·펫·야생동물·곤충·수중생물 관련 모든 것
+- 반전: 예상 못한 결말·반전·놀라운 순간·의외의 상황
+- 인물: 특이한 사람·유명인 뒷이야기·인간 관계·사회 현상
+- 잡학: 몰랐던 사실·역사·과학·브랜드 비화·통계·기록
+- 유머: 웃긴 상황·개그·유머러스한 내용
+- 감동: 훈훈·힐링·감동 사연
+- 기타: 위 어디에도 맞지 않는 경우
 
-반드시 JSON 배열만 출력. 마크다운·설명 금지.
-[{"i":0,"c":"유머"},{"i":1,"c":"감동"},...]"""
+반드시 JSON 배열만 출력. 마크다운·설명 절대 금지.
+[{"i":0,"c":"동물"},{"i":1,"c":"반전"},...]"""
 
 
 def score_batch(titles: list[str]) -> list[str]:
-    """여러 제목을 한 번의 API 호출로 분류. 반환: 카테고리 문자열 리스트."""
+    """여러 제목을 한 번의 API 호출로 분류."""
     if not titles:
         return []
     numbered = "\n".join(f"{i}:{t}" for i, t in enumerate(titles))
@@ -49,28 +49,27 @@ def score_batch(titles: list[str]) -> list[str]:
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw)
-        result = ["유머"] * len(titles)
+        result = ["기타"] * len(titles)
         for item in data:
             idx = item.get("i", -1)
-            cat = item.get("c", "유머")
+            cat = item.get("c", "기타")
             if isinstance(idx, int) and 0 <= idx < len(titles) and cat in CATEGORIES:
                 result[idx] = cat
         return result
     except Exception:
-        return ["유머"] * len(titles)
+        return ["기타"] * len(titles)
 
 
-def score_material(title: str, content: str = "", url: str | None = None,
-                   use_search: bool = False) -> dict:
-    """단일 제목 분류 (하위 호환용)."""
+def score_material(title: str, **kwargs) -> dict:
     cats = score_batch([title])
     return {"category": cats[0]}
 
 
 if __name__ == "__main__":
     titles = [
-        "엘리베이터에 갇힌 택배기사가 한 행동",
-        "손흥민 오늘 해트트릭 달성",
-        "이재명 대표 오늘 기자회견",
+        "표범이 먼저 다가와서 애교부림",
+        "경마 결승선에서 생긴 특이점",
+        "리바이스 청바지 로고에 숨겨진 뜻",
+        "아빠가 보는 아들과 딸의 차이",
     ]
     print(score_batch(titles))

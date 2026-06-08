@@ -751,23 +751,73 @@ async def _scrape_arca_classified(pages=1):
     return tagged, 0
 
 
-def _fetch_reddit():
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; fmkorea-web/1.0)"}
-    r = req_lib.get(f"{REDDIT_URL}?limit=50", headers=headers, timeout=10)
-    data = r.json()
-    posts = []
-    for item in data.get("data", {}).get("children", []):
-        d = item.get("data", {})
-        if d.get("stickied") or not d.get("title"):
-            continue
-        posts.append({
-            "title": _translate_ko(d["title"]),
-            "url":   "https://www.reddit.com" + d["permalink"],
-            "date":  "",
-        })
-        if len(posts) >= 40:
-            break
-    return posts
+def _parse_rec(rec_str) -> int:
+    try:
+        return int(str(rec_str).replace(",", "").replace("+", "").strip())
+    except Exception:
+        return 0
+
+
+# BoredPanda 섹션 — 동물·반전·잡학·인물 모두 커버
+_BP_SECTIONS = [
+    ("https://www.boredpanda.com/animals/",  "동물"),
+    ("https://www.boredpanda.com/history/",  "잡학"),
+    ("https://www.boredpanda.com/people/",   "인물"),
+    ("https://www.boredpanda.com/funny/",    "반전"),
+    ("https://www.boredpanda.com/nature/",   "동물"),
+    ("https://www.boredpanda.com/wtf/",      "반전"),
+]
+
+def _fetch_boredpanda_section(url, pre_cat):
+    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "en-US,en;q=0.9"}
+    try:
+        r = req_lib.get(url, headers=headers, timeout=8)
+        soup = BeautifulSoup(r.text, "html.parser")
+        results = []
+        for article in soup.select("article"):
+            h2 = article.select_one("h2")
+            a  = article.select_one("a[href]")
+            if not h2 or not a:
+                continue
+            title_en = h2.get_text(strip=True)
+            href     = a.get("href", "").split("?")[0]
+            if not title_en or not href.startswith("https://www.boredpanda.com/"):
+                continue
+            title_ko = _translate_ko(title_en)
+            results.append({
+                "title":    title_ko,
+                "url":      href,
+                "date":     "",
+                "recommend": "",
+                "source":   "BP",
+                "category": pre_cat,
+            })
+            if len(results) >= 12:
+                break
+        return results
+    except Exception:
+        return []
+
+
+async def _fetch_boredpanda():
+    """BoredPanda 여러 섹션 병렬 크롤링 + 번역."""
+    loop = asyncio.get_event_loop()
+    batches = await asyncio.gather(*[
+        loop.run_in_executor(None, lambda u=u, c=c: _fetch_boredpanda_section(u, c))
+        for u, c in _BP_SECTIONS
+    ])
+    results, seen = [], set()
+    for batch in batches:
+        for p in batch:
+            if p["url"] not in seen:
+                seen.add(p["url"])
+                results.append(p)
+    return results
+
+
+async def _fetch_boredpanda_classified():
+    posts = await _fetch_boredpanda()
+    return posts, 0
 
 
 _MANIFEST = {
@@ -822,18 +872,16 @@ def api_humor():
 
 @app.route("/api/feed")
 def api_feed():
-    """여러 커뮤니티 소스 합산 피드."""
-    import random as _random
+    """소재 피드 — BoredPanda(동물/잡학/인물/반전) + 국내 커뮤니티."""
     try:
         force = request.args.get("refresh") == "1"
         fm_posts,   fetched_at, fm_filtered  = get_cached("humor",   force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
         udt_posts,  _, udt_filtered          = get_cached("udt",     force=force, async_fn=_fetch_ohmyhumor_classified)
         ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
-        qoo_posts,  _, qoo_filtered          = get_cached("qoo",     force=force, async_fn=_fetch_theqoo_classified)
-        arca_posts, _, arca_filtered         = get_cached("arca",    force=force, async_fn=_scrape_arca_classified)
-        combined = fm_posts + udt_posts + ruli_posts + qoo_posts + arca_posts
-        _random.shuffle(combined)
-        total_filtered = fm_filtered + udt_filtered + ruli_filtered + qoo_filtered + arca_filtered
+        bp_posts,   _, bp_filtered           = get_cached("bp",      force=force, async_fn=_fetch_boredpanda_classified)
+        combined = fm_posts + udt_posts + ruli_posts + bp_posts
+        combined.sort(key=lambda p: _parse_rec(p.get("recommend", 0)), reverse=True)
+        total_filtered = fm_filtered + udt_filtered + ruli_filtered + bp_filtered
         return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1104,7 +1152,7 @@ def _prewarm():
         ("humor", lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
         ("udt",   lambda: _run_async(_fetch_ohmyhumor_classified())),
         ("ruli",  lambda: _run_async(_fetch_ruliweb_classified())),
-        ("qoo",   lambda: _run_async(_fetch_theqoo_classified())),
+        ("bp",    lambda: _run_async(_fetch_boredpanda_classified())),
     ]
     for key, fn in tasks:
         try:
