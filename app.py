@@ -172,15 +172,7 @@ def _run_async(coro):
 
 
 async def _scrape_page(browser, url, extra_filter=None):
-    ctx = await browser.new_context(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        locale="ko-KR",
-        extra_http_headers={
-            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": "https://www.fmkorea.com",
-        },
-    )
-    page = await ctx.new_page()
+    page = await browser.new_page()
     await _stealth.apply_stealth_async(page)
     async def handle_route(route):
         if route.request.resource_type in ("image", "font", "media", "stylesheet"):
@@ -194,7 +186,7 @@ async def _scrape_page(browser, url, extra_filter=None):
     except Exception:
         pass
     html = await page.content()
-    await ctx.close()
+    await page.close()
 
     soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
@@ -396,11 +388,7 @@ def get_cached_sync(key, fetcher, force=False):
 async def _fetch_thumb_async(post_url):
     """Playwright로 OG 이미지 또는 첫 번째 본문 이미지 추출."""
     browser = await _ensure_browser()
-    ctx = await browser.new_context(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        locale="ko-KR",
-    )
-    page = await ctx.new_page()
+    page = await browser.new_page()
     await _stealth.apply_stealth_async(page)
     async def handle_route(route):
         if route.request.resource_type in ("font", "stylesheet", "media"):
@@ -416,7 +404,7 @@ async def _fetch_thumb_async(post_url):
             pass
         html = await page.content()
     finally:
-        await ctx.close()
+        await page.close()
 
     soup = BeautifulSoup(html, "html.parser")
     og = soup.select_one("meta[property='og:image']")
