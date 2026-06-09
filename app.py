@@ -56,7 +56,7 @@ FILTER_KEYWORDS = {
 _FILTER_PATTERNS = []
 
 SKIP_TITLES = ["전체 삭제", "공지", "규정", "금지", "차단", "신고", "불만글"]
-CACHE_TTL = 300
+CACHE_TTL = 900
 
 # 필터 카테고리 메타데이터 (프론트에 노출)
 FILTER_CATEGORY_META = {
@@ -107,10 +107,12 @@ _score_batch_fn = None
 _score_cache: dict = {}
 _score_lock = threading.Lock()
 
+_translate_score_fn = None
 try:
     if os.environ.get("GROQ_API_KEY"):
         from shorts_filter import score_material as _score_fn  # type: ignore
         from shorts_filter import score_batch as _score_batch_fn  # type: ignore
+        from shorts_filter import translate_and_score_batch as _translate_score_fn  # type: ignore
         _sf_available = True
 except Exception as _sf_err:
     pass
@@ -772,20 +774,23 @@ def _parse_rec(rec_str) -> int:
         return 0
 
 
-# BoredPanda 섹션 — 동물·반전·잡학·인물 모두 커버
+# BoredPanda 섹션 — 반전/인물/잡학 강화, 동물 균형 조정
 _BP_SECTIONS = [
-    ("https://www.boredpanda.com/animals/",  "동물"),
-    ("https://www.boredpanda.com/history/",  "잡학"),
-    ("https://www.boredpanda.com/people/",   "인물"),
-    ("https://www.boredpanda.com/funny/",    "반전"),
-    ("https://www.boredpanda.com/nature/",   "동물"),
-    ("https://www.boredpanda.com/wtf/",      "반전"),
+    ("https://www.boredpanda.com/animals/",      "동물"),
+    ("https://www.boredpanda.com/nature/",        "동물"),
+    ("https://www.boredpanda.com/funny/",         "반전"),
+    ("https://www.boredpanda.com/wtf/",           "반전"),
+    ("https://www.boredpanda.com/interesting/",   "잡학"),
+    ("https://www.boredpanda.com/history/",       "잡학"),
+    ("https://www.boredpanda.com/people/",        "인물"),
+    ("https://www.boredpanda.com/science/",       "잡학"),
 ]
 
 def _fetch_boredpanda_section(url, pre_cat):
+    """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리)."""
     headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "en-US,en;q=0.9"}
     try:
-        r = req_lib.get(url, headers=headers, timeout=8)
+        r = req_lib.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
         for article in soup.select("article"):
@@ -797,21 +802,20 @@ def _fetch_boredpanda_section(url, pre_cat):
             href     = a.get("href", "").split("?")[0]
             if not title_en or not href.startswith("https://www.boredpanda.com/"):
                 continue
-            title_ko = _translate_ko(title_en)
             pts_el = article.select_one(".points-only-digits")
             pts = pts_el.get_text(strip=True) if pts_el else ""
             img_el = article.select_one("img")
             img_src = img_el.get("src", "") if img_el else ""
             results.append({
-                "title":    title_ko,
-                "url":      href,
-                "date":     "",
+                "title":     title_en,   # 영문 — 나중에 AI가 번역
+                "url":       href,
+                "date":      "",
                 "recommend": pts,
-                "img":      img_src,
-                "source":   "BP",
-                "category": pre_cat,
+                "img":       img_src,
+                "source":    "BP",
+                "category":  pre_cat,
             })
-            if len(results) >= 12:
+            if len(results) >= 20:
                 break
         return results
     except Exception:
@@ -819,7 +823,7 @@ def _fetch_boredpanda_section(url, pre_cat):
 
 
 async def _fetch_boredpanda():
-    """BoredPanda 여러 섹션 병렬 크롤링 + 번역."""
+    """BoredPanda 여러 섹션 병렬 크롤링."""
     loop = asyncio.get_event_loop()
     batches = await asyncio.gather(*[
         loop.run_in_executor(None, lambda u=u, c=c: _fetch_boredpanda_section(u, c))
@@ -835,8 +839,36 @@ async def _fetch_boredpanda():
 
 
 async def _fetch_boredpanda_classified():
+    """BP 크롤링 → AI 번역+채점 단일 호출로 처리."""
     posts = await _fetch_boredpanda()
-    tagged, _ = await _ai_filter_posts(posts)
+    if not posts:
+        return [], 0
+
+    if not _sf_available or _translate_score_fn is None:
+        # AI 없으면 영문 그대로
+        return posts, 0
+
+    loop = asyncio.get_event_loop()
+    BATCH = 15
+    titles_en = [p["title"] for p in posts]
+    all_results: list[dict] = []
+
+    for i in range(0, len(titles_en), BATCH):
+        chunk = titles_en[i:i + BATCH]
+        try:
+            res = await loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
+        except Exception:
+            res = [{"title_ko": t, "category": "기타", "score": 0} for t in chunk]
+        all_results.extend(res)
+
+    tagged = []
+    for post, result in zip(posts, all_results):
+        post_copy = dict(post)
+        post_copy["title"]    = result["title_ko"] or post["title"]
+        post_copy["category"] = result["category"]
+        post_copy["score"]    = result["score"]
+        tagged.append(post_copy)
+
     return tagged, 0
 
 
@@ -899,18 +931,25 @@ def api_feed():
         ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
         bp_posts,   _, bp_filtered           = get_cached("bp",      force=force, async_fn=_fetch_boredpanda_classified)
         import math
-        combined = fm_posts + ruli_posts + bp_posts
+        theqoo_posts, _, theqoo_filtered = get_cached("theqoo", force=force, async_fn=_fetch_theqoo_classified)
+        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts
         # 채널 DNA 점수 6 미만 제외 (점수 없으면 통과)
         combined = [p for p in combined if p.get("score", 6) >= 6]
         # 낮은 반응 제외 (수치 없으면 통과)
         combined = [p for p in combined if _parse_rec(p.get("recommend", 0)) >= 5 or not p.get("recommend")]
-        # 점수(가중치 2배) × log(반응수) 기반 정렬
-        combined.sort(
+        # URL 중복 제거
+        seen_urls, deduped = set(), []
+        for p in combined:
+            if p["url"] not in seen_urls:
+                seen_urls.add(p["url"])
+                deduped.append(p)
+        # 점수(×2) + log(반응수) 기반 정렬
+        deduped.sort(
             key=lambda p: p.get("score", 5) * 2 + math.log10(_parse_rec(p.get("recommend", 0)) + 10),
             reverse=True,
         )
-        total_filtered = fm_filtered + ruli_filtered + bp_filtered
-        return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
+        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered
+        return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1177,9 +1216,10 @@ def api_yt_channels():
 def _prewarm():
     time.sleep(1)
     tasks = [
-        ("humor", lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
-        ("ruli",  lambda: _run_async(_fetch_ruliweb_classified())),
-        ("bp",    lambda: _run_async(_fetch_boredpanda_classified())),
+        ("humor",  lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
+        ("ruli",   lambda: _run_async(_fetch_ruliweb_classified())),
+        ("bp",     lambda: _run_async(_fetch_boredpanda_classified())),
+        ("theqoo", lambda: _run_async(_fetch_theqoo_classified())),
     ]
     for key, fn in tasks:
         try:
