@@ -82,10 +82,10 @@
     .card.used { opacity: 0.35; }
     .card.top-score { border-color: #92400e; box-shadow: 0 0 0 1px #92400e, 0 0 12px rgba(245,158,11,0.25); }
 
-    .thumb-wrap { width: 100%; background: #1a1a1a; overflow: hidden; }
-    .thumb { width: 100%; display: block; object-fit: cover; }
+    .thumb-wrap { width: 100%; aspect-ratio: 16/9; background: #1a1a1a; overflow: hidden; position: relative; }
+    .thumb { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
     .skeleton {
-      width: 100%; height: 148px;
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: linear-gradient(90deg,#1a1a1a 0%,#232323 50%,#1a1a1a 100%);
       background-size: 200% 100%; animation: shimmer 1.4s ease infinite;
     }
