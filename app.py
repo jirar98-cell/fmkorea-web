@@ -49,25 +49,18 @@ FILTER_KEYWORDS = {
         "방산", "포대", "미사일", "전투기", "천궁", "전쟁기념관",
     ],
     "사회갈등": [
-        "젠더", "페미", "반일", "혐오", "노조", "파업",
-        "집회", "시위", "2030", "MZ세대", "저출산 대책",
-        "청년정책", "인구절벽",
+        "젠더", "페미", "반일", "노조", "파업", "2030", "MZ세대",
     ],
     "법조수사": [
         "검찰", "재판", "판결", "선고", "구속", "기소",
-        "구속영장", "무죄", "유죄", "항소", "상고", "수사",
-        "고발", "고소장", "영장",
+        "구속영장", "무죄", "유죄", "항소", "상고",
     ],
     "뉴스기사": [
-        "속보", "단독", "사퇴", "사임", "논란", "파문",
-        "충격", "경고", "해명", "입장문",
+        "속보", "단독", "사퇴", "사임",
     ],
 }
 
-_FILTER_PATTERNS = [
-    re.compile(r'[가-힣]\(\d{1,2}\)\s*$'),   # "이유(10)" 뉴스 클릭베이트 형식
-    re.compile(r'\.\.\.?\d+\)\s*$'),           # "...이유(3)" 형식
-]
+_FILTER_PATTERNS = []
 
 SKIP_TITLES = ["전체 삭제", "공지", "규정", "금지", "차단", "신고", "불만글"]
 CACHE_TTL = 900
@@ -1005,6 +998,32 @@ def api_feed():
         return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+_SOURCE_MAP = {
+    "ruli":   ("ruli",   _fetch_ruliweb_classified,     "루리웹"),
+    "bp":     ("bp",     _fetch_boredpanda_classified,  "BP"),
+    "theqoo": ("theqoo", _fetch_theqoo_classified,      "더쿠"),
+    "instiz": ("instiz", _fetch_instiz_classified,       "인스티즈"),
+}
+
+
+@app.route("/api/feed/source")
+def api_feed_source():
+    """소스별 개별 피드 — 프론트에서 병렬 호출용."""
+    src = request.args.get("src", "")
+    force = request.args.get("refresh") == "1"
+    if src not in _SOURCE_MAP:
+        return jsonify({"error": f"unknown src: {src}"}), 400
+    key, async_fn, label = _SOURCE_MAP[src]
+    try:
+        posts, fetched_at, filtered = get_cached(key, force=force, async_fn=async_fn)
+        posts = [p for p in posts if p.get("score", 6) >= 6]
+        posts = [p for p in posts if _parse_rec(p.get("recommend", 0)) >= 5 or not p.get("recommend")]
+        return jsonify({"src": src, "label": label, "posts": posts,
+                        "filtered": filtered, "fetched_at": fetched_at})
+    except Exception as e:
+        return jsonify({"error": str(e), "src": src}), 500
 
 
 @app.route("/api/udt")
