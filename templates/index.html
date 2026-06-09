@@ -162,6 +162,12 @@
     .cat-감동  { background:#1f2d0f; color:#86efac; }
     .cat-기타  { background:#1e1e1e; color:#888; }
 
+    .score-badge {
+      font-size: 11px; font-weight: 700; padding: 2px 6px;
+      border-radius: 4px; background: #1a2233; color: #60a5fa;
+    }
+    .score-badge.high { background: #2d1f00; color: #f59e0b; }
+
     /* ── State ─────────────────────────────────── */
     .state-wrap {
       column-span: all; text-align: center;
@@ -287,12 +293,17 @@ function makeCard(post) {
   const source = post.source   || '';
   const rec    = post.recommend ? `♥ ${post.recommend}` : '';
   const date   = post.date || '';
+  const score  = post.score != null ? post.score : null;
+  const scoreBadge = score != null
+    ? `<span class="score-badge${score >= 8 ? ' high' : ''}">${score}점</span>`
+    : '';
 
   card.innerHTML = `
     <div class="thumb-wrap"><div class="skeleton"></div></div>
     <div class="card-body">
       <div class="card-title">${esc(post.title)}</div>
       <div class="card-footer">
+        ${scoreBadge}
         <span class="cat-tag cat-${esc(cat)}">${esc(cat)}</span>
         ${source ? `<span class="source-tag">${esc(source)}</span>` : ''}
         ${date ? `<span class="date-text">${esc(date)}</span>` : ''}

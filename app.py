@@ -284,27 +284,28 @@ async def _scrape_page(browser, url, extra_filter=None):
 
 
 async def _ai_filter_posts(posts):
-    """AI로 게시물 카테고리 배치 분류. 전부 통과, category 필드 추가."""
+    """AI로 게시물 채점. category + score(0~10) 필드 추가."""
     if not _sf_available or not posts:
         return posts, 0
 
     loop = asyncio.get_event_loop()
     BATCH = 20
-    all_cats: list[str] = []
+    all_results: list[dict] = []
 
     for i in range(0, len(posts), BATCH):
         chunk = posts[i:i + BATCH]
         titles = [p["title"] for p in chunk]
         try:
-            cats = await loop.run_in_executor(None, lambda t=titles: _score_batch_fn(t))
+            results = await loop.run_in_executor(None, lambda t=titles: _score_batch_fn(t))
         except Exception:
-            cats = ["유머"] * len(chunk)
-        all_cats.extend(cats)
+            results = [{"category": "기타", "score": 0}] * len(chunk)
+        all_results.extend(results)
 
     tagged = []
-    for post, cat in zip(posts, all_cats):
+    for post, result in zip(posts, all_results):
         post_copy = dict(post)
-        post_copy["category"] = cat
+        post_copy["category"] = result["category"]
+        post_copy["score"] = result["score"]
         tagged.append(post_copy)
     return tagged, 0
 
@@ -835,7 +836,8 @@ async def _fetch_boredpanda():
 
 async def _fetch_boredpanda_classified():
     posts = await _fetch_boredpanda()
-    return posts, 0
+    tagged, _ = await _ai_filter_posts(posts)
+    return tagged, 0
 
 
 _MANIFEST = {
@@ -896,11 +898,17 @@ def api_feed():
         fm_posts,   fetched_at, fm_filtered  = get_cached("humor",   force=force, async_fn=lambda: _scrape(HUMOR_URL, pages=2))
         ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
         bp_posts,   _, bp_filtered           = get_cached("bp",      force=force, async_fn=_fetch_boredpanda_classified)
+        import math
         combined = fm_posts + ruli_posts + bp_posts
-        # 기타 카테고리 + 낮은 반응 제외
-        combined = [p for p in combined if p.get("category") != "기타"]
+        # 채널 DNA 점수 6 미만 제외 (점수 없으면 통과)
+        combined = [p for p in combined if p.get("score", 6) >= 6]
+        # 낮은 반응 제외 (수치 없으면 통과)
         combined = [p for p in combined if _parse_rec(p.get("recommend", 0)) >= 5 or not p.get("recommend")]
-        combined.sort(key=lambda p: _parse_rec(p.get("recommend", 0)), reverse=True)
+        # 점수(가중치 2배) × log(반응수) 기반 정렬
+        combined.sort(
+            key=lambda p: p.get("score", 5) * 2 + math.log10(_parse_rec(p.get("recommend", 0)) + 10),
+            reverse=True,
+        )
         total_filtered = fm_filtered + ruli_filtered + bp_filtered
         return jsonify({"posts": combined, "count": len(combined), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
