@@ -1195,8 +1195,9 @@ def _prewarm():
         except Exception:
             pass
 
-threading.Thread(target=_prewarm, daemon=True).start()
+if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+    threading.Thread(target=_prewarm, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, use_reloader=True, reloader_type="stat")
