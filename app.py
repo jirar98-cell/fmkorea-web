@@ -314,7 +314,14 @@ async def _ai_filter_posts(posts):
     tagged = []
     for post, result in zip(posts, all_results):
         post_copy = dict(post)
-        post_copy["category"] = result.get("category") or "기타"
+        tags = result.get("tags")
+        if tags and isinstance(tags, list) and tags:
+            post_copy["tags"] = tags
+            post_copy["category"] = tags[0]
+        else:
+            cat = result.get("category") or "호기심"
+            post_copy["category"] = cat
+            post_copy["tags"] = [cat]
         score = result.get("score")
         if score is not None:
             post_copy["score"] = score
@@ -930,8 +937,15 @@ async def _bp_fetch_and_score():
     tagged = []
     for post, result in zip(posts, all_results):
         post_copy = dict(post)
-        post_copy["title"]    = result.get("title_ko") or post["title"]
-        post_copy["category"] = result.get("category") or "기타"
+        post_copy["title"] = result.get("title_ko") or post["title"]
+        tags = result.get("tags")
+        if tags and isinstance(tags, list) and tags:
+            post_copy["tags"] = tags
+            post_copy["category"] = tags[0]
+        else:
+            cat = result.get("category") or "호기심"
+            post_copy["category"] = cat
+            post_copy["tags"] = [cat]
         score = result.get("score")
         if score is not None:
             post_copy["score"] = score

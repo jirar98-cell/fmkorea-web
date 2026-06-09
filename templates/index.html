@@ -122,13 +122,17 @@
     .rec { font-size: 11px; color: #e87070; margin-left: auto; }
     .date-text { font-size: 11px; color: var(--muted); }
 
-    .cat-동물 { background:#0f2d10; color:#4ade80; }
-    .cat-반전 { background:#2d1a0f; color:#fb923c; }
-    .cat-인물 { background:#1a0f2d; color:#a78bfa; }
-    .cat-잡학 { background:#0f1e2d; color:#38bdf8; }
-    .cat-유머 { background:#2d2200; color:#fbbf24; }
-    .cat-감동 { background:#1f2d0f; color:#86efac; }
-    .cat-기타 { background:#1e1e1e; color:#888; }
+    .cat-동물  { background:#0f2d10; color:#4ade80; }
+    .cat-반전  { background:#2d1a0f; color:#fb923c; }
+    .cat-의외  { background:#1e1a2e; color:#c084fc; }
+    .cat-감동  { background:#2d0f1a; color:#f9a8d4; }
+    .cat-유머  { background:#2d2200; color:#fbbf24; }
+    .cat-호기심{ background:#0f1e2d; color:#67e8f9; }
+    .cat-인물  { background:#1a0f2d; color:#a78bfa; }
+    .cat-공감  { background:#1f2a0f; color:#86efac; }
+    .cat-기타  { background:#1e1e1e; color:#888; }
+    /* 구버전 캐시 호환 */
+    .cat-잡학  { background:#0f1e2d; color:#38bdf8; }
 
     .score-badge { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #1a2233; color: #60a5fa; }
     .score-badge.high { background: #2d1f00; color: #f59e0b; }
@@ -283,12 +287,14 @@
   <div class="feed-filters" id="feedFilters">
     <div class="filter-row" id="cats">
       <button class="f-btn active" data-cat="전체">전체</button>
-      <button class="f-btn" data-cat="반전">😲 반전</button>
+      <button class="f-btn" data-cat="반전">🔄 반전</button>
+      <button class="f-btn" data-cat="의외">😮 의외</button>
       <button class="f-btn" data-cat="동물">🐾 동물</button>
-      <button class="f-btn" data-cat="인물">👤 인물</button>
-      <button class="f-btn" data-cat="잡학">📚 잡학</button>
+      <button class="f-btn" data-cat="감동">🥹 감동</button>
       <button class="f-btn" data-cat="유머">😂 유머</button>
-      <button class="f-btn" data-cat="감동">🥺 감동</button>
+      <button class="f-btn" data-cat="호기심">🤔 호기심</button>
+      <button class="f-btn" data-cat="인물">👤 인물</button>
+      <button class="f-btn" data-cat="공감">💬 공감</button>
     </div>
     <div class="filter-row" id="srcs">
       <button class="f-btn src-active" data-src="전체">전체 소스</button>
@@ -358,7 +364,9 @@ function toggleLike(post) {
     updateLikeBadge();
     return false;
   }
-  likes.unshift({ url: post.url, title: post.title, category: post.category || '기타',
+  const _tags = Array.isArray(post.tags) && post.tags.length ? post.tags : [post.category || '기타'];
+  likes.unshift({ url: post.url, title: post.title,
+    tags: _tags, category: _tags[0],
     score: post.score, source: post.source, recommend: post.recommend, savedAt: Date.now() });
   saveLikes(likes);
   updateLikeBadge();
@@ -398,35 +406,43 @@ function renderLearningView() {
     return;
   }
 
-  // 카테고리 분포
-  const catMap = {};
-  likes.forEach(l => { const c = l.category || '기타'; catMap[c] = (catMap[c]||0) + 1; });
-  const sorted = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  // 태그 분포 (복수 태그 — 모두 카운트)
+  const tagMap = {};
+  likes.forEach(l => {
+    const ltags = Array.isArray(l.tags) && l.tags.length ? l.tags : [l.category || '기타'];
+    ltags.forEach(t => { tagMap[t] = (tagMap[t]||0) + 1; });
+  });
+  const sorted = Object.entries(tagMap).sort((a,b)=>b[1]-a[1]);
   const total = likes.length;
-  const topCat = sorted[0]?.[0] || '-';
+  const tagTotal = Object.values(tagMap).reduce((a,b)=>a+b,0);
+  const topTag = sorted[0]?.[0] || '-';
 
   // 평균 점수
   const scored = likes.filter(l => l.score != null);
   const avgScore = scored.length ? (scored.reduce((a,l)=>a+l.score,0)/scored.length).toFixed(1) : '-';
 
-  // 성향 인사이트 텍스트
-  const top2 = sorted.slice(0,2).map(([c])=>c).join(', ');
-  const insightText = `가장 많이 저장한 유형은 <strong>${top2}</strong>이에요. ` +
-    `평균 점수 ${avgScore}점대의 소재를 선호하며, ` +
-    `이는 <strong>@puppyd5g</strong> 채널의 "${topCat} 반전" 포맷과 잘 맞는 성향이에요.`;
+  // 성향 인사이트 — 복수 태그 기반
+  const top2tags = sorted.slice(0,2).map(([t])=>t);
+  const hasReverse = tagMap['반전'] || tagMap['의외'];
+  const insightText = `가장 많이 저장한 느낌은 <strong>${top2tags.join(' + ')}</strong>이에요. ` +
+    (hasReverse ? `반전/의외 요소를 선호하며, @puppyd5g 채널 핵심 DNA와 잘 맞는 성향이에요. ` : '') +
+    `평균 점수 <strong>${avgScore}점</strong>대 소재를 저장 중.`;
 
-  const bars = sorted.map(([cat, cnt]) => {
-    const pct = Math.round(cnt/total*100);
+  const bars = sorted.map(([tag, cnt]) => {
+    const pct = Math.round(cnt/tagTotal*100);
     return `<div class="pref-row">
-      <span class="cat-tag cat-${esc(cat)} pref-cat">${esc(cat)}</span>
+      <span class="cat-tag cat-${esc(tag)} pref-cat">${esc(tag)}</span>
       <div class="pref-bar-wrap"><div class="pref-bar" style="width:${pct}%"></div></div>
       <span class="pref-pct">${pct}%</span>
     </div>`;
   }).join('');
 
-  const likeRows = likes.map(l => `
+  const likeRows = likes.map(l => {
+    const ltags = Array.isArray(l.tags) && l.tags.length ? l.tags : [l.category || '기타'];
+    const tagBadges = ltags.map(t => `<span class="cat-tag cat-${esc(t)}">${esc(t)}</span>`).join('');
+    return `
     <div class="like-item" onclick="window.open('${esc(l.url)}','_blank')">
-      <span class="cat-tag cat-${esc(l.category||'기타')}">${esc(l.category||'기타')}</span>
+      <div style="display:flex;gap:3px;flex-shrink:0">${tagBadges}</div>
       <span class="like-title">${esc(l.title)}</span>
       <div class="like-meta">
         ${l.score != null ? `<span class="score-badge${l.score>=8?' high':''}">${l.score}점</span>` : ''}
@@ -434,7 +450,8 @@ function renderLearningView() {
         ${l.recommend ? `<span class="rec" style="font-size:11px">♥${l.recommend}</span>` : ''}
         <button class="unlike-btn" onclick="event.stopPropagation();removeLike('${esc(l.url)}')">✕</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   el.innerHTML = `
     <div class="stats-row">
@@ -514,14 +531,30 @@ const io = new IntersectionObserver(entries => {
   entries.forEach(e => { if (!e.isIntersecting) return; io.unobserve(e.target); loadThumb(e.target); });
 }, { rootMargin: '200px' });
 
-/* ── 필터 상태 ── */
-let _activeCat = '전체', _activeSrc = '전체', _minScore = 6;
+/* ── 필터 상태 — 태그 다중선택(OR 로직) ── */
+let _activeTags = new Set(), _activeSrc = '전체', _minScore = 6;
 
 document.getElementById('cats').addEventListener('click', e => {
   const btn = e.target.closest('.f-btn');
   if (!btn) return;
-  document.querySelectorAll('#cats .f-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active'); _activeCat = btn.dataset.cat; filterCards();
+  const cat = btn.dataset.cat;
+  if (cat === '전체') {
+    _activeTags.clear();
+    document.querySelectorAll('#cats .f-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  } else {
+    document.querySelector('#cats .f-btn[data-cat="전체"]').classList.remove('active');
+    if (_activeTags.has(cat)) {
+      _activeTags.delete(cat);
+      btn.classList.remove('active');
+    } else {
+      _activeTags.add(cat);
+      btn.classList.add('active');
+    }
+    if (_activeTags.size === 0)
+      document.querySelector('#cats .f-btn[data-cat="전체"]').classList.add('active');
+  }
+  filterCards();
 });
 document.getElementById('srcs').addEventListener('click', e => {
   const btn = e.target.closest('.f-btn');
@@ -536,10 +569,11 @@ function onScoreFilter(v) {
 }
 function filterCards() {
   document.querySelectorAll('.card').forEach(card => {
-    const catOk   = _activeCat === '전체' || card.dataset.cat === _activeCat;
-    const srcOk   = _activeSrc === '전체' || card.dataset.src === _activeSrc;
+    const cardTags = (card.dataset.tags || card.dataset.cat || '').split(',');
+    const tagOk  = _activeTags.size === 0 || cardTags.some(t => _activeTags.has(t));
+    const srcOk  = _activeSrc === '전체' || card.dataset.src === _activeSrc;
     const scoreOk = parseInt(card.dataset.score || '6') >= _minScore;
-    card.classList.toggle('hidden', !(catOk && srcOk && scoreOk));
+    card.classList.toggle('hidden', !(tagOk && srcOk && scoreOk));
   });
   updateCount();
 }
@@ -556,21 +590,23 @@ function makeCard(post) {
   const liked = isLiked(post.url);
   const card = document.createElement('div');
   card.className = 'card';
+  const tags = Array.isArray(post.tags) && post.tags.length ? post.tags : [post.category || '기타'];
   card.dataset.url   = post.url;
-  card.dataset.cat   = post.category || '기타';
-  card.dataset.src   = post.source   || '';
+  card.dataset.tags  = tags.join(',');
+  card.dataset.cat   = tags[0];
+  card.dataset.src   = post.source || '';
   card.dataset.score = post.score != null ? post.score : 6;
   if (used.has(post.url))   card.classList.add('used');
   if ((post.score||0) >= 9) card.classList.add('top-score');
   if (liked)                card.classList.add('liked-card');
 
-  const cat   = post.category || '기타';
   const src   = post.source   || '';
   const rec   = post.recommend ? `♥ ${post.recommend}` : '';
   const date  = post.date || '';
   const score = post.score != null ? post.score : null;
   const scoreBadge = score != null
     ? `<span class="score-badge${score>=8?' high':''}">${score}점</span>` : '';
+  const tagBadges = tags.map(t => `<span class="cat-tag cat-${esc(t)}">${esc(t)}</span>`).join('');
 
   card.innerHTML = `
     <div class="card-actions">
@@ -583,7 +619,7 @@ function makeCard(post) {
       <div class="card-title">${esc(post.title)}</div>
       <div class="card-footer">
         ${scoreBadge}
-        <span class="cat-tag cat-${esc(cat)}">${esc(cat)}</span>
+        ${tagBadges}
         ${src ? `<span class="source-tag">${esc(src)}</span>` : ''}
         ${date ? `<span class="date-text">${esc(date)}</span>` : ''}
         ${rec ? `<span class="rec">${esc(rec)}</span>` : ''}

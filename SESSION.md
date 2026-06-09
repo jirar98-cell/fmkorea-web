@@ -6,27 +6,26 @@
 ## 마지막 세션: 2026-06-10
 
 ### 완료된 작업
-- 소스별 프로그레시브 로딩 구현 (`/api/feed/source?src=ruli|theqoo|instiz|bp`)
-- 예상 완료 카운트다운 (28초 기준, 남은 시간 역산 표시)
-- 진행률 바 (헤더 하단 파란 바)
-- ❤️ 즐겨찾기 버튼 (카드 hover 시 나타남)
-- 📊 학습소 탭: 즐겨찾기 목록 + 카테고리 성향 분석 + 인사이트 텍스트
-- AI 채점 실패 시 score=None → 필터 통과 (핵심 버그 수정)
-- BP 하드 타임아웃: 스크래핑 12초 + 전체 28초
-- 프론트 30초 AbortController 타임아웃
-- 정치/사회 필터 키워드 강화 (사회갈등, 법조수사 카테고리 추가)
-- 이미지 16:9 비율 고정
+- **curl_cffi 전체 적용** — 루리웹/더쿠/인스티즈 전부 `_html_cffi()` 헬퍼로 전환 (Railway IP 차단 우회)
+  - `_html_cffi(url, referer, timeout)` — curl_cffi 1차, requests fallback 구조
+- **인스티즈 셀렉터 이중화** — `a.listsubject` 없으면 `table.board_list a[href*='/pt/']` 시도
+- **BP 6섹션 × 10개 복원** — animals/funny/interesting/people/life/arts (60개 → AI 5배치)
+- **BP 타임아웃 28초→45초** + 프론트 AbortController 30초→55초
+- **이미지 프록시 WebP화** — 480px→380px, JPEG 65%→WebP 50% (fallback JPEG 55%), `Cache-Control: public, max-age=86400`
+- **_img_cache 구조 변경** — `bytes` → `tuple[bytes, str]` (data, mimetype) 쌍으로 저장
+- **prewarm 빈결과 캐시 방지** — posts=[] 이면 캐시 건너뜀 (900초 동안 0개 반환 버그 수정)
+- **썸네일 동시 처리 3→6** (index.html MAX=6)
+- **카운트다운 타이머 est 28→45** (BP 예상 시간 반영)
 
 ### 현재 알려진 이슈
-- **루리웹 0개** — Railway IP에서 루리웹 차단 추정. curl_cffi 적용 고려
-- **인스티즈 0개** — 셀렉터 `a.listsubject` 확인 필요
-- **BP 타임아웃** — 28초 이내 완료 안 될 경우 빈 배열 반환 (정상 동작)
-- fmkorea IP 차단 (공유기 재시작으로 해결, curl_cffi 준비됨)
+- **fmkorea IP 차단** — 공유기 재시작으로 해결. curl_cffi 코드 이미 있음.
+- **인스티즈 실제 HTML 구조 미검증** — Railway에서 curl_cffi로 접근은 되지만 셀렉터가 맞는지는 실 결과로 확인 필요
+- **BP 45초 타임아웃** — Railway Groq API 지연에 따라 AI 채점 일부 누락 가능성 (정상 동작 범위)
 
 ### 다음 해야 할 것
-1. 루리웹 curl_cffi 적용 (현재 plain requests → Railway에서 차단될 수 있음)
-2. 인스티즈 셀렉터 확인 (실제 HTML 구조 체크)
-3. 학습소 → AI 피드백 루프: 즐겨찾기한 카테고리 기반으로 scoring prompt 조정
+1. Railway 로그 확인: 루리웹/더쿠/인스티즈가 이제 몇 개씩 나오는지
+2. 인스티즈 셀렉터 결과 확인 — 여전히 0개면 실제 HTML 구조 분석 필요
+3. 학습소 → AI 피드백 루프: 즐겨찾기 카테고리 기반 scoring prompt 가중치 조정 (미구현)
 
 ### 배포 방법
 ```
@@ -35,7 +34,7 @@ cd "C:\Users\alsdn\OneDrive\바탕 화면\fmkorea_web"
 ```
 
 ### 주요 파일
-- `app.py` — Flask 백엔드, 소스 크롤러, `/api/feed/source`, `/api/feed`
+- `app.py` — Flask 백엔드, `_html_cffi()` 헬퍼, 소스 크롤러, `/api/feed/source`, `/api/img`
 - `shorts_filter.py` — Groq AI 채점 (채널 DNA 포함)
 - `templates/index.html` — 프론트엔드 (피드 + 학습소 탭)
 - `deploy.ps1` — 배포 스크립트
