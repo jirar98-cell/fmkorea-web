@@ -307,14 +307,17 @@ async def _ai_filter_posts(posts):
         try:
             results = await loop.run_in_executor(None, lambda t=titles: _score_batch_fn(t))
         except Exception:
-            results = [{"category": "기타", "score": 0}] * len(chunk)
+            # score=None → 키 미설정 → p.get("score",6)=6 → 필터 통과
+            results = [{"category": "기타", "score": None}] * len(chunk)
         all_results.extend(results)
 
     tagged = []
     for post, result in zip(posts, all_results):
         post_copy = dict(post)
-        post_copy["category"] = result["category"]
-        post_copy["score"] = result["score"]
+        post_copy["category"] = result.get("category") or "기타"
+        score = result.get("score")
+        if score is not None:
+            post_copy["score"] = score
         tagged.append(post_copy)
     return tagged, 0
 
@@ -903,15 +906,17 @@ async def _fetch_boredpanda_classified():
         try:
             res = await loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
         except Exception:
-            res = [{"title_ko": t, "category": "기타", "score": 0} for t in chunk]
+            res = [{"title_ko": t, "category": "기타", "score": None} for t in chunk]
         all_results.extend(res)
 
     tagged = []
     for post, result in zip(posts, all_results):
         post_copy = dict(post)
-        post_copy["title"]    = result["title_ko"] or post["title"]
-        post_copy["category"] = result["category"]
-        post_copy["score"]    = result["score"]
+        post_copy["title"]    = result.get("title_ko") or post["title"]
+        post_copy["category"] = result.get("category") or "기타"
+        score = result.get("score")
+        if score is not None:
+            post_copy["score"] = score
         tagged.append(post_copy)
 
     return tagged, 0
