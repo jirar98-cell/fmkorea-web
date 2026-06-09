@@ -26,10 +26,16 @@ python app.py
 # http://localhost:5000
 ```
 
+## 세션 이어받기
+
+**새 세션 시작 시 → 반드시 `SESSION.md` 먼저 읽을 것.**
+`SESSION.md`에 마지막 세션의 완료 작업, 알려진 이슈, 다음 할 일이 기록되어 있다.
+작업 끝날 때마다 `SESSION.md` 업데이트 필수.
+
 ## 배포 규칙 (절대 준수)
 
 **로컬과 Railway(GitHub)는 항상 1:1로 동일해야 한다.**
-코드 변경 후 반드시 `git add → git commit → git push origin master`.
+배포는 반드시 `./deploy.ps1 "메시지"` 로 실행 — git push + railway up 동시 처리.
 
 ## 현재 소스 구조 (2026-06-09 기준)
 

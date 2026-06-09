@@ -1,11 +1,14 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions",
     "allow": [
       "PowerShell",
       "Bash",
       "Skill(update-config)",
-      "Skill(update-config:*)"
-    ]
+      "Skill(update-config:*)",
+      "WebFetch(domain:fmkorea-web-production.up.railway.app)",
+      "Bash(railway logs *)",
+      "WebFetch(domain:www.youtube.com)"
+    ],
+    "defaultMode": "bypassPermissions"
   }
 }

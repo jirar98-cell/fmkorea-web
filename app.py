@@ -671,6 +671,44 @@ async def _fetch_theqoo_classified():
     return tagged, 0
 
 
+def _fetch_instiz():
+    """인스티즈 실시간 인기글 크롤링."""
+    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://www.instiz.net/"}
+    results, seen = [], set()
+    try:
+        r = req_lib.get("https://www.instiz.net/pt", headers=headers, timeout=8)
+        r.encoding = "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+        for a in soup.select("a.listsubject"):
+            title = a.get_text(strip=True)
+            href  = a.get("href", "")
+            if not title or len(title) < 3 or title in seen:
+                continue
+            if _NOTICE_PAT.search(title) or is_filtered(title):
+                continue
+            seen.add(title)
+            full_href = "https://www.instiz.net" + href if href.startswith("/") else href
+            tr = a.find_parent("tr")
+            rec_el = tr.select_one(".recom") if tr else None
+            rec = rec_el.get_text(strip=True) if rec_el else ""
+            results.append({
+                "title": title, "url": full_href,
+                "date": "", "recommend": rec, "source": "인스티즈",
+            })
+            if len(results) >= 40:
+                break
+    except Exception:
+        pass
+    return results
+
+
+async def _fetch_instiz_classified():
+    loop = asyncio.get_event_loop()
+    posts = await loop.run_in_executor(None, _fetch_instiz)
+    tagged, _ = await _ai_filter_posts(posts)
+    return tagged, 0
+
+
 def _translate_ko(text):
     try:
         r = req_lib.get(
@@ -931,8 +969,9 @@ def api_feed():
         ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
         bp_posts,   _, bp_filtered           = get_cached("bp",      force=force, async_fn=_fetch_boredpanda_classified)
         import math
-        theqoo_posts, _, theqoo_filtered = get_cached("theqoo", force=force, async_fn=_fetch_theqoo_classified)
-        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts
+        theqoo_posts,  _, theqoo_filtered  = get_cached("theqoo",  force=force, async_fn=_fetch_theqoo_classified)
+        instiz_posts,  _, instiz_filtered  = get_cached("instiz",  force=force, async_fn=_fetch_instiz_classified)
+        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts
         # 채널 DNA 점수 6 미만 제외 (점수 없으면 통과)
         combined = [p for p in combined if p.get("score", 6) >= 6]
         # 낮은 반응 제외 (수치 없으면 통과)
@@ -948,7 +987,7 @@ def api_feed():
             key=lambda p: p.get("score", 5) * 2 + math.log10(_parse_rec(p.get("recommend", 0)) + 10),
             reverse=True,
         )
-        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered
+        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered
         return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1220,6 +1259,7 @@ def _prewarm():
         ("ruli",   lambda: _run_async(_fetch_ruliweb_classified())),
         ("bp",     lambda: _run_async(_fetch_boredpanda_classified())),
         ("theqoo", lambda: _run_async(_fetch_theqoo_classified())),
+        ("instiz", lambda: _run_async(_fetch_instiz_classified())),
     ]
     for key, fn in tasks:
         try:

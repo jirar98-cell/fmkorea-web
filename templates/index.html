@@ -3,205 +3,196 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>소재 피드</title>
+  <title>소재 피드 — 퍼피독</title>
   <style>
     :root {
-      --bg: #0d0d0d;
-      --surface: #181818;
-      --border: #2a2a2a;
-      --text: #e8e8e8;
-      --muted: #5a5a5a;
-      --accent: #3b82f6;
+      --bg: #0d0d0d; --surface: #181818; --border: #2a2a2a;
+      --text: #e8e8e8; --muted: #5a5a5a; --accent: #3b82f6;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-    }
+    body { background: var(--bg); color: var(--text);
+      font-family: -apple-system,'Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
 
-    /* ── Header ─────────────────────────────── */
+    /* ── Header ── */
     .header {
       position: sticky; top: 0; z-index: 30;
-      background: rgba(13,13,13,0.92);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: rgba(13,13,13,0.95);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
-
     .header-top {
       display: flex; align-items: center; gap: 10px;
       padding: 10px 16px 0;
     }
-
     .logo { font-size: 15px; font-weight: 700; }
-
     .cnt-badge {
       font-size: 12px; color: var(--muted);
       padding: 2px 8px; border-radius: 20px;
       background: var(--surface); border: 1px solid var(--border);
     }
-
     .spacer { flex: 1; }
-
     .refresh-btn {
       display: flex; align-items: center; gap: 5px;
       background: var(--surface); border: 1px solid var(--border);
       color: var(--text); padding: 5px 12px; border-radius: 6px;
-      cursor: pointer; font-size: 12px;
-      transition: background 0.12s;
+      cursor: pointer; font-size: 12px; transition: background 0.12s;
     }
     .refresh-btn:hover { background: #222; }
     .refresh-btn.loading .icon { display: inline-block; animation: spin 0.7s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Category tabs ───────────────────────── */
-    .cats {
-      display: flex; gap: 4px;
-      padding: 8px 16px 10px;
-      overflow-x: auto;
-      -ms-overflow-style: none; scrollbar-width: none;
+    /* ── Filter rows ── */
+    .filter-row {
+      display: flex; gap: 4px; padding: 6px 16px;
+      overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none;
     }
-    .cats::-webkit-scrollbar { display: none; }
+    .filter-row::-webkit-scrollbar { display: none; }
+    .filter-row + .filter-row { padding-top: 0; padding-bottom: 8px; }
 
-    .cat-btn {
-      flex-shrink: 0;
-      padding: 5px 13px;
-      border-radius: 20px;
-      font-size: 12.5px; font-weight: 500;
-      cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--muted);
-      transition: all 0.12s;
-      white-space: nowrap;
+    .f-btn {
+      flex-shrink: 0; padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--muted); transition: all 0.12s; white-space: nowrap;
     }
-    .cat-btn:hover { border-color: #555; color: var(--text); }
-    .cat-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .f-btn:hover { border-color: #555; color: var(--text); }
+    .f-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .f-btn.src-active { background: #2d2d00; border-color: #666; color: #fbbf24; }
 
-    /* ── Grid ─────────────────────────────────── */
-    .grid {
-      columns: 4 220px;
-      column-gap: 10px;
-      padding: 12px 16px 40px;
-    }
-    @media (max-width: 540px) {
-      .grid { columns: 2 140px; column-gap: 8px; padding: 10px 10px 30px; }
-    }
+    /* score filter */
+    .score-filter { display: flex; align-items: center; gap: 8px; padding: 0 16px 8px; }
+    .score-filter label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .score-filter input[type=range] { flex: 1; accent-color: var(--accent); }
+    .score-val { font-size: 11px; color: var(--text); font-weight: 700; min-width: 28px; }
 
-    /* ── Card ─────────────────────────────────── */
+    /* ── Grid ── */
+    .grid { columns: 4 220px; column-gap: 10px; padding: 12px 16px 40px; }
+    @media (max-width: 540px) { .grid { columns: 2 140px; column-gap: 8px; padding: 10px 10px 30px; } }
+
+    /* ── Card ── */
     .card {
-      break-inside: avoid;
-      margin-bottom: 10px;
-      background: var(--surface);
-      border-radius: 10px;
-      overflow: hidden;
-      cursor: pointer;
+      break-inside: avoid; margin-bottom: 10px;
+      background: var(--surface); border-radius: 10px;
+      overflow: hidden; cursor: pointer;
       border: 1px solid var(--border);
       transition: transform 0.15s, box-shadow 0.15s;
+      position: relative;
     }
-    .card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-    }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
     .card.hidden { display: none; }
+    .card.used { opacity: 0.35; }
+    .card.top-score { border-color: #92400e; box-shadow: 0 0 0 1px #92400e, 0 0 12px rgba(245,158,11,0.25); }
 
     .thumb-wrap { width: 100%; background: #1a1a1a; overflow: hidden; }
-
     .thumb { width: 100%; display: block; object-fit: cover; }
-
     .skeleton {
       width: 100%; height: 148px;
-      background: linear-gradient(90deg, #1a1a1a 0%, #232323 50%, #1a1a1a 100%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s ease infinite;
-    }
-    @keyframes shimmer {
-      0%   { background-position: -200% 0; }
-      100% { background-position:  200% 0; }
+      background: linear-gradient(90deg,#1a1a1a 0%,#232323 50%,#1a1a1a 100%);
+      background-size: 200% 100%; animation: shimmer 1.4s ease infinite;
     }
 
     .card-body { padding: 9px 11px 10px; }
-
     .card-title {
-      font-size: 13px; line-height: 1.45; font-weight: 500;
-      color: #d8d8d8;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      font-size: 13px; line-height: 1.45; font-weight: 500; color: #d8d8d8;
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
     }
-
     .card-footer {
-      display: flex; align-items: center; gap: 6px;
+      display: flex; align-items: center; gap: 5px;
       margin-top: 6px; flex-wrap: wrap;
     }
-
-    .cat-tag {
-      font-size: 10px; font-weight: 700;
-      padding: 2px 6px; border-radius: 3px;
-      letter-spacing: 0.2px;
-    }
-    .source-tag {
-      font-size: 10px; color: var(--muted);
-      padding: 2px 6px; border-radius: 3px;
-      background: #1e1e1e; border: 1px solid #2e2e2e;
-    }
-    .rec {
-      font-size: 11px; color: #e87070;
-      margin-left: auto;
-    }
+    .cat-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
+    .source-tag { font-size: 10px; color: var(--muted); padding: 2px 6px; border-radius: 3px; background: #1e1e1e; border: 1px solid #2e2e2e; }
+    .rec { font-size: 11px; color: #e87070; margin-left: auto; }
     .date-text { font-size: 11px; color: var(--muted); }
 
-    /* category colors */
-    .cat-동물  { background:#0f2d10; color:#4ade80; }
-    .cat-반전  { background:#2d1a0f; color:#fb923c; }
-    .cat-인물  { background:#1a0f2d; color:#a78bfa; }
-    .cat-잡학  { background:#0f1e2d; color:#38bdf8; }
-    .cat-유머  { background:#2d2200; color:#fbbf24; }
-    .cat-감동  { background:#1f2d0f; color:#86efac; }
-    .cat-기타  { background:#1e1e1e; color:#888; }
+    .cat-동물 { background:#0f2d10; color:#4ade80; }
+    .cat-반전 { background:#2d1a0f; color:#fb923c; }
+    .cat-인물 { background:#1a0f2d; color:#a78bfa; }
+    .cat-잡학 { background:#0f1e2d; color:#38bdf8; }
+    .cat-유머 { background:#2d2200; color:#fbbf24; }
+    .cat-감동 { background:#1f2d0f; color:#86efac; }
+    .cat-기타 { background:#1e1e1e; color:#888; }
 
-    .score-badge {
-      font-size: 11px; font-weight: 700; padding: 2px 6px;
-      border-radius: 4px; background: #1a2233; color: #60a5fa;
-    }
+    .score-badge { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #1a2233; color: #60a5fa; }
     .score-badge.high { background: #2d1f00; color: #f59e0b; }
 
-    /* ── State ─────────────────────────────────── */
-    .state-wrap {
-      column-span: all; text-align: center;
-      padding: 70px 20px; color: var(--muted);
+    /* ── Card action buttons ── */
+    .card-actions {
+      position: absolute; top: 6px; right: 6px;
+      display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s;
     }
+    .card:hover .card-actions { opacity: 1; }
+    .act-btn {
+      width: 26px; height: 26px; border-radius: 6px;
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc; font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.12s; backdrop-filter: blur(4px);
+    }
+    .act-btn:hover { background: rgba(60,60,60,0.9); color: #fff; }
+    .act-btn.copied { background: rgba(16,100,16,0.9); color: #4ade80; }
+    .act-btn.marked { background: rgba(100,20,20,0.9); color: #f87171; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #222; border: 1px solid #333; color: #ccc;
+      padding: 8px 18px; border-radius: 8px; font-size: 13px;
+      opacity: 0; transition: all 0.2s; pointer-events: none; z-index: 999;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── State ── */
+    .state-wrap { column-span: all; text-align: center; padding: 70px 20px; color: var(--muted); }
     .spinner {
       width: 28px; height: 28px;
       border: 2.5px solid #2a2a2a; border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.75s linear infinite;
-      margin: 0 auto 14px;
+      border-radius: 50%; animation: spin 0.75s linear infinite; margin: 0 auto 14px;
     }
     .state-wrap p { font-size: 14px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
   </style>
 </head>
 <body>
 
 <div class="header">
   <div class="header-top">
-    <span class="logo">소재 피드</span>
+    <span class="logo">퍼피독 소재 피드</span>
     <span class="cnt-badge" id="cnt">로딩 중...</span>
     <span class="spacer"></span>
     <button class="refresh-btn" id="rfbtn" onclick="load(true)">
       <span class="icon">↻</span><span>새로고침</span>
     </button>
   </div>
-  <div class="cats" id="cats">
-    <button class="cat-btn active" data-cat="전체">전체</button>
-    <button class="cat-btn" data-cat="동물">🐾 동물</button>
-    <button class="cat-btn" data-cat="반전">😲 반전</button>
-    <button class="cat-btn" data-cat="인물">👤 인물</button>
-    <button class="cat-btn" data-cat="잡학">📚 잡학</button>
-    <button class="cat-btn" data-cat="유머">😂 유머</button>
-    <button class="cat-btn" data-cat="감동">🥺 감동</button>
+
+  <!-- 카테고리 필터 -->
+  <div class="filter-row" id="cats">
+    <button class="f-btn active" data-cat="전체">전체</button>
+    <button class="f-btn" data-cat="반전">😲 반전</button>
+    <button class="f-btn" data-cat="동물">🐾 동물</button>
+    <button class="f-btn" data-cat="인물">👤 인물</button>
+    <button class="f-btn" data-cat="잡학">📚 잡학</button>
+    <button class="f-btn" data-cat="유머">😂 유머</button>
+    <button class="f-btn" data-cat="감동">🥺 감동</button>
+  </div>
+
+  <!-- 소스 필터 -->
+  <div class="filter-row" id="srcs">
+    <button class="f-btn src-active" data-src="전체">전체 소스</button>
+    <button class="f-btn" data-src="루리웹">루리웹</button>
+    <button class="f-btn" data-src="BP">BoredPanda</button>
+    <button class="f-btn" data-src="더쿠">더쿠</button>
+    <button class="f-btn" data-src="인스티즈">인스티즈</button>
+    <button class="f-btn" data-src="펨코">펨코</button>
+  </div>
+
+  <!-- 최소 점수 필터 -->
+  <div class="score-filter">
+    <label>최소 점수</label>
+    <input type="range" id="minScore" min="1" max="10" value="6" step="1" oninput="onScoreFilter(this.value)">
+    <span class="score-val" id="scoreVal">6+</span>
   </div>
 </div>
 
@@ -209,16 +200,30 @@
   <div class="state-wrap"><div class="spinner"></div><p>게시물 불러오는 중...</p></div>
 </div>
 
+<div id="toast"></div>
+
 <script>
 function esc(s) {
   return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-/* ── 썸네일 큐 (최대 3 동시) ─────────────────── */
-let _running = 0;
-const MAX = 3;
-const _queue = [];
+/* ── Toast ── */
+let _toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
 
+/* ── 사용됨 (localStorage) ── */
+const USED_KEY = 'puppyd_used';
+function getUsed() { try { return new Set(JSON.parse(localStorage.getItem(USED_KEY) || '[]')); } catch { return new Set(); } }
+function saveUsed(s) { try { localStorage.setItem(USED_KEY, JSON.stringify([...s].slice(-500))); } catch {} }
+
+/* ── 썸네일 큐 (최대 3 동시) ── */
+let _running = 0;
+const MAX = 3, _queue = [];
 function _drain() {
   while (_running < MAX && _queue.length > 0) {
     const { card, resolve } = _queue.shift();
@@ -226,10 +231,9 @@ function _drain() {
     _doThumb(card).finally(() => { _running--; resolve(); _drain(); });
   }
 }
-
 async function _doThumb(card) {
-  const url   = card.dataset.url;
-  const skel  = card.querySelector('.skeleton');
+  const url = card.dataset.url;
+  const skel = card.querySelector('.skeleton');
   const twrap = card.querySelector('.thumb-wrap');
   if (!url || !twrap) return;
   try {
@@ -243,35 +247,47 @@ async function _doThumb(card) {
     img.src = `/api/img?url=${encodeURIComponent(d.img)}`;
   } catch { twrap.remove(); }
 }
-
 function loadThumb(card) {
   return new Promise(r => { _queue.push({ card, resolve: r }); _drain(); });
 }
-
 const io = new IntersectionObserver(entries => {
-  entries.forEach(e => {
-    if (!e.isIntersecting) return;
-    io.unobserve(e.target);
-    loadThumb(e.target);
-  });
+  entries.forEach(e => { if (!e.isIntersecting) return; io.unobserve(e.target); loadThumb(e.target); });
 }, { rootMargin: '200px' });
 
-/* ── 카테고리 필터 ─────────────────────────────── */
-let _activeCat = '전체';
+/* ── 필터 상태 ── */
+let _activeCat = '전체', _activeSrc = '전체', _minScore = 6;
 
 document.getElementById('cats').addEventListener('click', e => {
-  const btn = e.target.closest('.cat-btn');
+  const btn = e.target.closest('.f-btn');
   if (!btn) return;
-  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#cats .f-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   _activeCat = btn.dataset.cat;
   filterCards();
 });
 
+document.getElementById('srcs').addEventListener('click', e => {
+  const btn = e.target.closest('.f-btn');
+  if (!btn) return;
+  document.querySelectorAll('#srcs .f-btn').forEach(b => b.classList.remove('src-active'));
+  btn.classList.add('src-active');
+  _activeSrc = btn.dataset.src;
+  filterCards();
+});
+
+function onScoreFilter(v) {
+  _minScore = parseInt(v);
+  document.getElementById('scoreVal').textContent = v + '+';
+  filterCards();
+}
+
 function filterCards() {
+  const used = getUsed();
   document.querySelectorAll('.card').forEach(card => {
-    const match = _activeCat === '전체' || card.dataset.cat === _activeCat;
-    card.classList.toggle('hidden', !match);
+    const catOk  = _activeCat === '전체' || card.dataset.cat === _activeCat;
+    const srcOk  = _activeSrc === '전체' || card.dataset.src === _activeSrc;
+    const scoreOk = parseInt(card.dataset.score || '6') >= _minScore;
+    card.classList.toggle('hidden', !(catOk && srcOk && scoreOk));
   });
   updateCount();
 }
@@ -281,44 +297,88 @@ function updateCount() {
   document.getElementById('cnt').textContent = `${visible}개`;
 }
 
-/* ── 카드 생성 ──────────────────────────────── */
+/* ── 카드 생성 ── */
 function makeCard(post) {
+  const used = getUsed();
   const card = document.createElement('div');
   card.className = 'card';
-  card.dataset.url = post.url;
-  card.dataset.cat = post.category || '유머';
-  card.onclick = () => window.open(post.url, '_blank');
+  card.dataset.url   = post.url;
+  card.dataset.cat   = post.category || '기타';
+  card.dataset.src   = post.source   || '';
+  card.dataset.score = post.score != null ? post.score : 6;
+  if (used.has(post.url)) card.classList.add('used');
+  if ((post.score || 0) >= 9) card.classList.add('top-score');
 
-  const cat    = post.category || '유머';
-  const source = post.source   || '';
-  const rec    = post.recommend ? `♥ ${post.recommend}` : '';
-  const date   = post.date || '';
-  const score  = post.score != null ? post.score : null;
+  const cat   = post.category || '기타';
+  const src   = post.source   || '';
+  const rec   = post.recommend ? `♥ ${post.recommend}` : '';
+  const date  = post.date || '';
+  const score = post.score != null ? post.score : null;
   const scoreBadge = score != null
     ? `<span class="score-badge${score >= 8 ? ' high' : ''}">${score}점</span>`
     : '';
 
   card.innerHTML = `
+    <div class="card-actions">
+      <button class="act-btn copy-btn" title="제목 복사">📋</button>
+      <button class="act-btn use-btn" title="사용 표시">✓</button>
+    </div>
     <div class="thumb-wrap"><div class="skeleton"></div></div>
     <div class="card-body">
       <div class="card-title">${esc(post.title)}</div>
       <div class="card-footer">
         ${scoreBadge}
         <span class="cat-tag cat-${esc(cat)}">${esc(cat)}</span>
-        ${source ? `<span class="source-tag">${esc(source)}</span>` : ''}
+        ${src ? `<span class="source-tag">${esc(src)}</span>` : ''}
         ${date ? `<span class="date-text">${esc(date)}</span>` : ''}
         ${rec ? `<span class="rec">${esc(rec)}</span>` : ''}
       </div>
     </div>
   `;
 
+  // 제목 복사
+  card.querySelector('.copy-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(post.title).then(() => {
+      const btn = e.currentTarget;
+      btn.textContent = '✓'; btn.classList.add('copied');
+      toast(`"${post.title.slice(0,20)}..." 복사됨`);
+      setTimeout(() => { btn.textContent = '📋'; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+
+  // 사용됨 표시
+  card.querySelector('.use-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const u = getUsed();
+    if (u.has(post.url)) {
+      u.delete(post.url);
+      card.classList.remove('used');
+      e.currentTarget.classList.remove('marked');
+      toast('사용 취소');
+    } else {
+      u.add(post.url);
+      card.classList.add('used');
+      e.currentTarget.textContent = '✕';
+      e.currentTarget.classList.add('marked');
+      toast('사용됨으로 표시');
+    }
+    saveUsed(u);
+    updateCount();
+  });
+
+  // 클릭 → 원본 열기
+  card.addEventListener('click', e => {
+    if (e.target.closest('.act-btn')) return;
+    window.open(post.url, '_blank');
+  });
+
   io.observe(card);
   return card;
 }
 
-/* ── 메인 로드 ──────────────────────────────── */
+/* ── 메인 로드 ── */
 let _loading = false;
-
 async function load(force = false) {
   if (_loading) return;
   _loading = true;
@@ -326,7 +386,7 @@ async function load(force = false) {
   const grid = document.getElementById('grid');
   btn.classList.add('loading');
   document.getElementById('cnt').textContent = '로딩 중...';
-  grid.innerHTML = '<div class="state-wrap"><div class="spinner"></div><p>게시물 불러오는 중...</p></div>';
+  if (force) grid.innerHTML = '<div class="state-wrap"><div class="spinner"></div><p>게시물 불러오는 중...</p></div>';
 
   try {
     const res  = await fetch(force ? '/api/feed?refresh=1' : '/api/feed');
@@ -348,7 +408,9 @@ async function load(force = false) {
     grid.appendChild(frag);
     filterCards();
   } catch (e) {
-    grid.innerHTML = `<div class="state-wrap"><p>불러오기 실패: ${esc(e.message)}</p></div>`;
+    if (!document.querySelector('.card')) {
+      grid.innerHTML = `<div class="state-wrap"><p>불러오기 실패: ${esc(e.message)}</p></div>`;
+    }
   } finally {
     btn.classList.remove('loading');
     _loading = false;
