@@ -16,21 +16,27 @@
     /* ── Header ── */
     .header {
       position: sticky; top: 0; z-index: 30;
-      background: rgba(13,13,13,0.95);
+      background: rgba(13,13,13,0.97);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
-    .header-top {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 16px 0;
+
+    /* View tabs */
+    .view-tabs { display: flex; align-items: center; gap: 0; padding: 10px 16px 0; }
+    .view-tab {
+      font-size: 13px; font-weight: 600; padding: 6px 16px 8px;
+      cursor: pointer; border: none; border-bottom: 2px solid transparent;
+      color: var(--muted); background: transparent; transition: all 0.15s;
+      display: flex; align-items: center; gap: 5px;
     }
-    .logo { font-size: 15px; font-weight: 700; }
-    .cnt-badge {
-      font-size: 12px; color: var(--muted);
-      padding: 2px 8px; border-radius: 20px;
-      background: var(--surface); border: 1px solid var(--border);
+    .view-tab:hover { color: var(--text); }
+    .view-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .like-badge {
+      font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+      background: #7f1d1d; color: #fca5a5; min-width: 18px; text-align: center;
     }
-    .spacer { flex: 1; }
+    .like-badge:empty { display: none; }
+    .header-right { margin-left: auto; }
     .refresh-btn {
       display: flex; align-items: center; gap: 5px;
       background: var(--surface); border: 1px solid var(--border);
@@ -40,46 +46,34 @@
     .refresh-btn:hover { background: #222; }
     .refresh-btn.loading .icon { display: inline-block; animation: spin 0.7s linear infinite; }
 
-    /* ── Loading Status Bar ── */
+    /* ── Loading bar ── */
     .load-bar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 5px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; padding: 5px 16px;
       overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none;
       background: #0a0a0a;
     }
     .load-bar::-webkit-scrollbar { display: none; }
     .load-bar.hidden { display: none; }
     .src-chip {
-      flex-shrink: 0; font-size: 11px; padding: 3px 10px; border-radius: 20px;
-      white-space: nowrap; transition: all 0.25s;
+      flex-shrink: 0; font-size: 11px; padding: 3px 10px; border-radius: 20px; white-space: nowrap; transition: all 0.25s;
     }
     .src-chip.waiting { background: #141414; color: #444; border: 1px solid #222; }
     .src-chip.loading { background: #0d1f10; color: #4ade80; border: 1px solid #1a3d20; animation: pulse 1.1s ease-in-out infinite; }
     .src-chip.done    { background: #0d1826; color: #60a5fa; border: 1px solid #1a3350; }
     .src-chip.error   { background: #1f0d0d; color: #f87171; border: 1px solid #3d1a1a; }
-    .load-timer {
-      margin-left: auto; flex-shrink: 0;
-      font-size: 11px; color: var(--muted); white-space: nowrap;
-    }
+    .load-timer { margin-left: auto; flex-shrink: 0; font-size: 11px; color: var(--muted); white-space: nowrap; }
     .load-timer.done { color: #4ade80; }
+    .load-progress-wrap { width: 100%; height: 2px; background: #1a1a1a; }
+    .load-progress-bar { height: 100%; background: var(--accent); transition: width 0.4s ease; width: 0%; }
 
-    /* ── Progress bar ── */
-    .load-progress-wrap {
-      width: 100%; height: 2px; background: #1a1a1a;
-    }
-    .load-progress-bar {
-      height: 100%; background: var(--accent);
-      transition: width 0.3s ease; width: 0%;
-    }
-
-    /* ── Filter rows ── */
+    /* ── Feed filters ── */
+    .feed-filters.hidden { display: none; }
     .filter-row {
       display: flex; gap: 4px; padding: 6px 16px;
       overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none;
     }
     .filter-row::-webkit-scrollbar { display: none; }
     .filter-row + .filter-row { padding-top: 0; padding-bottom: 8px; }
-
     .f-btn {
       flex-shrink: 0; padding: 4px 12px; border-radius: 20px;
       font-size: 12px; font-weight: 500; cursor: pointer;
@@ -89,8 +83,6 @@
     .f-btn:hover { border-color: #555; color: var(--text); }
     .f-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .f-btn.src-active { background: #2d2d00; border-color: #666; color: #fbbf24; }
-
-    /* score filter */
     .score-filter { display: flex; align-items: center; gap: 8px; padding: 0 16px 8px; }
     .score-filter label { font-size: 11px; color: var(--muted); white-space: nowrap; }
     .score-filter input[type=range] { flex: 1; accent-color: var(--accent); }
@@ -103,16 +95,14 @@
     /* ── Card ── */
     .card {
       break-inside: avoid; margin-bottom: 10px;
-      background: var(--surface); border-radius: 10px;
-      overflow: hidden; cursor: pointer;
-      border: 1px solid var(--border);
-      transition: transform 0.15s, box-shadow 0.15s;
-      position: relative;
+      background: var(--surface); border-radius: 10px; overflow: hidden; cursor: pointer;
+      border: 1px solid var(--border); transition: transform 0.15s, box-shadow 0.15s; position: relative;
     }
     .card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
     .card.hidden { display: none; }
     .card.used { opacity: 0.35; }
     .card.top-score { border-color: #92400e; box-shadow: 0 0 0 1px #92400e, 0 0 12px rgba(245,158,11,0.25); }
+    .card.liked-card { border-color: #7f1d1d; }
 
     .thumb-wrap { width: 100%; aspect-ratio: 16/9; background: #1a1a1a; overflow: hidden; position: relative; }
     .thumb { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
@@ -121,17 +111,12 @@
       background: linear-gradient(90deg,#1a1a1a 0%,#232323 50%,#1a1a1a 100%);
       background-size: 200% 100%; animation: shimmer 1.4s ease infinite;
     }
-
     .card-body { padding: 9px 11px 10px; }
     .card-title {
       font-size: 13px; line-height: 1.45; font-weight: 500; color: #d8d8d8;
-      display: -webkit-box; -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical; overflow: hidden;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
-    .card-footer {
-      display: flex; align-items: center; gap: 5px;
-      margin-top: 6px; flex-wrap: wrap;
-    }
+    .card-footer { display: flex; align-items: center; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
     .cat-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
     .source-tag { font-size: 10px; color: var(--muted); padding: 2px 6px; border-radius: 3px; background: #1e1e1e; border: 1px solid #2e2e2e; }
     .rec { font-size: 11px; color: #e87070; margin-left: auto; }
@@ -148,7 +133,6 @@
     .score-badge { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #1a2233; color: #60a5fa; }
     .score-badge.high { background: #2d1f00; color: #f59e0b; }
 
-    /* ── Card action buttons ── */
     .card-actions {
       position: absolute; top: 6px; right: 6px;
       display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s;
@@ -156,14 +140,15 @@
     .card:hover .card-actions { opacity: 1; }
     .act-btn {
       width: 26px; height: 26px; border-radius: 6px;
-      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.15);
-      color: #ccc; font-size: 13px; cursor: pointer;
+      background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.12);
+      color: #aaa; font-size: 13px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      transition: background 0.12s; backdrop-filter: blur(4px);
+      transition: all 0.12s; backdrop-filter: blur(4px);
     }
     .act-btn:hover { background: rgba(60,60,60,0.9); color: #fff; }
     .act-btn.copied { background: rgba(16,100,16,0.9); color: #4ade80; }
     .act-btn.marked { background: rgba(100,20,20,0.9); color: #f87171; }
+    .act-btn.liked  { background: rgba(127,29,29,0.9); color: #fca5a5; }
 
     /* ── Toast ── */
     #toast {
@@ -174,7 +159,7 @@
     }
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ── State ── */
+    /* ── Loading state ── */
     .state-wrap { column-span: all; text-align: center; padding: 60px 20px; color: var(--muted); }
     .spinner {
       width: 32px; height: 32px;
@@ -183,17 +168,83 @@
     }
     .state-wrap .load-headline { font-size: 15px; color: #aaa; margin-bottom: 8px; }
     .state-wrap .load-sub { font-size: 13px; color: #555; margin-bottom: 16px; font-variant-numeric: tabular-nums; }
-    .state-wrap .load-dots {
-      display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
-    }
+    .state-wrap .load-dots { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
     .load-dot {
       font-size: 11px; padding: 3px 10px; border-radius: 20px;
-      border: 1px solid #2a2a2a; color: #444; background: #111;
-      transition: all 0.3s;
+      border: 1px solid #2a2a2a; color: #444; background: #111; transition: all 0.3s;
     }
     .load-dot.loading { border-color: #1a3d20; color: #4ade80; background: #0d1f10; animation: pulse 1.1s ease-in-out infinite; }
     .load-dot.done    { border-color: #1a3350; color: #60a5fa; background: #0d1826; animation: none; }
     .load-dot.error   { border-color: #3d1a1a; color: #f87171; background: #1f0d0d; animation: none; }
+
+    /* ── 학습소 view ── */
+    .learning-view { display: none; padding: 20px 16px 60px; max-width: 860px; margin: 0 auto; }
+    .learning-view.active { display: block; }
+
+    .learning-hero { margin-bottom: 24px; }
+    .learning-hero h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .learning-hero p { font-size: 13px; color: var(--muted); }
+
+    .stats-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat-card {
+      flex: 1; min-width: 90px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; text-align: center;
+    }
+    .stat-num { font-size: 22px; font-weight: 700; color: var(--text); }
+    .stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .pref-section {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin-bottom: 16px;
+    }
+    .section-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+    .pref-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .pref-row:last-child { margin-bottom: 0; }
+    .pref-cat { min-width: 44px; }
+    .pref-bar-wrap { flex: 1; height: 6px; background: #1e1e1e; border-radius: 3px; overflow: hidden; }
+    .pref-bar { height: 100%; border-radius: 3px; background: var(--accent); }
+    .pref-pct { font-size: 12px; color: var(--muted); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .insight-box {
+      background: #0d1826; border: 1px solid #1a3350;
+      border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+      font-size: 13px; color: #93c5fd; line-height: 1.6;
+    }
+    .insight-box strong { color: #60a5fa; }
+
+    .like-section {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; margin-bottom: 16px;
+    }
+    .like-section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+    }
+    .clear-all-btn {
+      font-size: 11px; color: #555; background: transparent; border: 1px solid #2a2a2a;
+      padding: 3px 10px; border-radius: 4px; cursor: pointer; transition: all 0.12s;
+    }
+    .clear-all-btn:hover { color: #f87171; border-color: #f87171; }
+    .like-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-bottom: 1px solid #151515;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .like-item:hover { background: #111; }
+    .like-item:last-child { border-bottom: none; }
+    .like-title { flex: 1; font-size: 13px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .like-meta { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .unlike-btn {
+      width: 20px; height: 20px; border-radius: 4px; background: transparent;
+      border: 1px solid #2a2a2a; color: #444; cursor: pointer; font-size: 10px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.1s;
+    }
+    .unlike-btn:hover { background: #2a1010; border-color: #f87171; color: #f87171; }
+
+    .empty-learn { text-align: center; padding: 70px 20px; }
+    .empty-learn .emoji { font-size: 40px; margin-bottom: 16px; }
+    .empty-learn p { font-size: 14px; color: #555; }
+    .empty-learn .hint { font-size: 12px; color: #3a3a3a; margin-top: 10px; line-height: 1.7; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -203,59 +254,72 @@
 <body>
 
 <div class="header">
-  <div class="header-top">
-    <span class="logo">퍼피독 소재 피드</span>
-    <span class="cnt-badge" id="cnt">로딩 중...</span>
-    <span class="spacer"></span>
-    <button class="refresh-btn" id="rfbtn" onclick="load(true)">
-      <span class="icon">↻</span><span>새로고침</span>
+  <!-- 뷰 탭 -->
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-feed" onclick="switchView('feed')">소재 피드</button>
+    <button class="view-tab" id="tab-learn" onclick="switchView('learn')">
+      ❤️ 학습소 <span class="like-badge" id="likeBadge"></span>
     </button>
+    <div class="header-right">
+      <button class="refresh-btn" id="rfbtn" onclick="load(true)">
+        <span class="icon">↻</span><span>새로고침</span>
+      </button>
+    </div>
   </div>
 
-  <!-- 소스별 로딩 상태 바 -->
+  <!-- 로딩 상태 바 -->
   <div class="load-bar hidden" id="loadBar">
     <span class="src-chip waiting" id="chip-ruli">루리웹 대기</span>
     <span class="src-chip waiting" id="chip-theqoo">더쿠 대기</span>
     <span class="src-chip waiting" id="chip-instiz">인스티즈 대기</span>
     <span class="src-chip waiting" id="chip-bp">BP 대기</span>
-    <span class="load-timer" id="loadTimer">0.0초</span>
+    <span class="load-timer" id="loadTimer">대기 중</span>
   </div>
-  <!-- 진행률 바 -->
   <div class="load-progress-wrap hidden" id="loadProgressWrap">
     <div class="load-progress-bar" id="loadProgressBar"></div>
   </div>
 
-  <!-- 카테고리 필터 -->
-  <div class="filter-row" id="cats">
-    <button class="f-btn active" data-cat="전체">전체</button>
-    <button class="f-btn" data-cat="반전">😲 반전</button>
-    <button class="f-btn" data-cat="동물">🐾 동물</button>
-    <button class="f-btn" data-cat="인물">👤 인물</button>
-    <button class="f-btn" data-cat="잡학">📚 잡학</button>
-    <button class="f-btn" data-cat="유머">😂 유머</button>
-    <button class="f-btn" data-cat="감동">🥺 감동</button>
-  </div>
-
-  <!-- 소스 필터 -->
-  <div class="filter-row" id="srcs">
-    <button class="f-btn src-active" data-src="전체">전체 소스</button>
-    <button class="f-btn" data-src="루리웹">루리웹</button>
-    <button class="f-btn" data-src="BP">BoredPanda</button>
-    <button class="f-btn" data-src="더쿠">더쿠</button>
-    <button class="f-btn" data-src="인스티즈">인스티즈</button>
-    <button class="f-btn" data-src="펨코">펨코</button>
-  </div>
-
-  <!-- 최소 점수 필터 -->
-  <div class="score-filter">
-    <label>최소 점수</label>
-    <input type="range" id="minScore" min="1" max="10" value="6" step="1" oninput="onScoreFilter(this.value)">
-    <span class="score-val" id="scoreVal">6+</span>
+  <!-- 피드 필터 (학습소에서 숨김) -->
+  <div class="feed-filters" id="feedFilters">
+    <div class="filter-row" id="cats">
+      <button class="f-btn active" data-cat="전체">전체</button>
+      <button class="f-btn" data-cat="반전">😲 반전</button>
+      <button class="f-btn" data-cat="동물">🐾 동물</button>
+      <button class="f-btn" data-cat="인물">👤 인물</button>
+      <button class="f-btn" data-cat="잡학">📚 잡학</button>
+      <button class="f-btn" data-cat="유머">😂 유머</button>
+      <button class="f-btn" data-cat="감동">🥺 감동</button>
+    </div>
+    <div class="filter-row" id="srcs">
+      <button class="f-btn src-active" data-src="전체">전체 소스</button>
+      <button class="f-btn" data-src="루리웹">루리웹</button>
+      <button class="f-btn" data-src="BP">BoredPanda</button>
+      <button class="f-btn" data-src="더쿠">더쿠</button>
+      <button class="f-btn" data-src="인스티즈">인스티즈</button>
+      <button class="f-btn" data-src="펨코">펨코</button>
+    </div>
+    <div class="score-filter">
+      <label>최소 점수</label>
+      <input type="range" id="minScore" min="1" max="10" value="6" step="1" oninput="onScoreFilter(this.value)">
+      <span class="score-val" id="scoreVal">6+</span>
+    </div>
   </div>
 </div>
 
-<div class="grid" id="grid">
-  <div class="state-wrap"><div class="spinner"></div><p>게시물 불러오는 중...</p></div>
+<!-- 피드 뷰 -->
+<div id="feedView">
+  <div class="grid" id="grid">
+    <div class="state-wrap"><div class="spinner"></div><p class="load-headline">게시물 불러오는 중...</p></div>
+  </div>
+</div>
+
+<!-- 학습소 뷰 -->
+<div class="learning-view" id="learningView">
+  <div class="learning-hero">
+    <h2>📊 아이디어 학습소</h2>
+    <p>즐겨찾기한 소재를 분석해서 내가 좋아하는 콘텐츠 성향을 보여줘요</p>
+  </div>
+  <div id="learningContent"></div>
 </div>
 
 <div id="toast"></div>
@@ -274,12 +338,152 @@ function toast(msg) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
 }
 
-/* ── 사용됨 (localStorage) ── */
-const USED_KEY = 'puppyd_used';
-function getUsed() { try { return new Set(JSON.parse(localStorage.getItem(USED_KEY) || '[]')); } catch { return new Set(); } }
-function saveUsed(s) { try { localStorage.setItem(USED_KEY, JSON.stringify([...s].slice(-500))); } catch {} }
+/* ── localStorage 키 ── */
+const USED_KEY  = 'puppyd_used';
+const LIKES_KEY = 'puppyd_likes';
 
-/* ── 썸네일 큐 (최대 3 동시) ── */
+function getUsed()  { try { return new Set(JSON.parse(localStorage.getItem(USED_KEY)  || '[]')); } catch { return new Set(); } }
+function saveUsed(s){ try { localStorage.setItem(USED_KEY,  JSON.stringify([...s].slice(-500))); } catch {} }
+function getLikes() { try { return JSON.parse(localStorage.getItem(LIKES_KEY) || '[]'); } catch { return []; } }
+function saveLikes(arr){ try { localStorage.setItem(LIKES_KEY, JSON.stringify(arr.slice(0, 300))); } catch {} }
+
+function isLiked(url){ return getLikes().some(l => l.url === url); }
+
+function toggleLike(post) {
+  const likes = getLikes();
+  const idx = likes.findIndex(l => l.url === post.url);
+  if (idx >= 0) {
+    likes.splice(idx, 1);
+    saveLikes(likes);
+    updateLikeBadge();
+    return false;
+  }
+  likes.unshift({ url: post.url, title: post.title, category: post.category || '기타',
+    score: post.score, source: post.source, recommend: post.recommend, savedAt: Date.now() });
+  saveLikes(likes);
+  updateLikeBadge();
+  return true;
+}
+
+function updateLikeBadge() {
+  const cnt = getLikes().length;
+  const el = document.getElementById('likeBadge');
+  if (el) el.textContent = cnt > 0 ? cnt : '';
+}
+
+/* ── 뷰 전환 ── */
+let _currentView = 'feed';
+function switchView(view) {
+  _currentView = view;
+  document.getElementById('feedView').style.display    = view === 'feed' ? '' : 'none';
+  document.getElementById('learningView').classList.toggle('active', view === 'learn');
+  document.getElementById('feedFilters').classList.toggle('hidden', view === 'learn');
+  document.getElementById('tab-feed').classList.toggle('active', view === 'feed');
+  document.getElementById('tab-learn').classList.toggle('active', view === 'learn');
+  if (view === 'learn') renderLearningView();
+}
+
+/* ── 학습소 렌더링 ── */
+function renderLearningView() {
+  const likes = getLikes();
+  const el = document.getElementById('learningContent');
+
+  if (likes.length === 0) {
+    el.innerHTML = `
+      <div class="empty-learn">
+        <div class="emoji">💡</div>
+        <p>아직 즐겨찾기한 소재가 없어요</p>
+        <p class="hint">피드에서 카드를 hover하면 나타나는<br>❤️ 버튼으로 마음에 드는 소재를 저장해보세요.<br>저장할수록 내 채널 성향을 분석해드려요.</p>
+      </div>`;
+    return;
+  }
+
+  // 카테고리 분포
+  const catMap = {};
+  likes.forEach(l => { const c = l.category || '기타'; catMap[c] = (catMap[c]||0) + 1; });
+  const sorted = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const total = likes.length;
+  const topCat = sorted[0]?.[0] || '-';
+
+  // 평균 점수
+  const scored = likes.filter(l => l.score != null);
+  const avgScore = scored.length ? (scored.reduce((a,l)=>a+l.score,0)/scored.length).toFixed(1) : '-';
+
+  // 성향 인사이트 텍스트
+  const top2 = sorted.slice(0,2).map(([c])=>c).join(', ');
+  const insightText = `가장 많이 저장한 유형은 <strong>${top2}</strong>이에요. ` +
+    `평균 점수 ${avgScore}점대의 소재를 선호하며, ` +
+    `이는 <strong>@puppyd5g</strong> 채널의 "${topCat} 반전" 포맷과 잘 맞는 성향이에요.`;
+
+  const bars = sorted.map(([cat, cnt]) => {
+    const pct = Math.round(cnt/total*100);
+    return `<div class="pref-row">
+      <span class="cat-tag cat-${esc(cat)} pref-cat">${esc(cat)}</span>
+      <div class="pref-bar-wrap"><div class="pref-bar" style="width:${pct}%"></div></div>
+      <span class="pref-pct">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  const likeRows = likes.map(l => `
+    <div class="like-item" onclick="window.open('${esc(l.url)}','_blank')">
+      <span class="cat-tag cat-${esc(l.category||'기타')}">${esc(l.category||'기타')}</span>
+      <span class="like-title">${esc(l.title)}</span>
+      <div class="like-meta">
+        ${l.score != null ? `<span class="score-badge${l.score>=8?' high':''}">${l.score}점</span>` : ''}
+        ${l.source ? `<span class="source-tag">${esc(l.source)}</span>` : ''}
+        ${l.recommend ? `<span class="rec" style="font-size:11px">♥${l.recommend}</span>` : ''}
+        <button class="unlike-btn" onclick="event.stopPropagation();removeLike('${esc(l.url)}')">✕</button>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">즐겨찾기</div></div>
+      <div class="stat-card"><div class="stat-num">${avgScore}</div><div class="stat-label">평균 점수</div></div>
+      <div class="stat-card"><div class="stat-num">${topCat}</div><div class="stat-label">주 카테고리</div></div>
+      <div class="stat-card"><div class="stat-num">${sorted.length}</div><div class="stat-label">카테고리 수</div></div>
+    </div>
+    <div class="insight-box">${insightText}</div>
+    <div class="pref-section">
+      <div class="section-title">카테고리 성향</div>
+      ${bars}
+    </div>
+    <div class="like-section">
+      <div class="like-section-header">
+        <span class="section-title" style="margin:0">즐겨찾기 목록 (${total}개)</span>
+        <button class="clear-all-btn" onclick="clearAllLikes()">전체 삭제</button>
+      </div>
+      ${likeRows}
+    </div>`;
+}
+
+function removeLike(url) {
+  const likes = getLikes().filter(l => l.url !== url);
+  saveLikes(likes);
+  updateLikeBadge();
+  // 피드 카드에서도 좋아요 버튼 상태 업데이트
+  const card = document.querySelector(`.card[data-url="${CSS.escape(url)}"]`);
+  if (card) {
+    card.classList.remove('liked-card');
+    const btn = card.querySelector('.like-btn');
+    if (btn) { btn.classList.remove('liked'); btn.textContent = '♡'; }
+  }
+  renderLearningView();
+}
+
+function clearAllLikes() {
+  if (!confirm(`즐겨찾기 ${getLikes().length}개를 모두 삭제할까요?`)) return;
+  saveLikes([]);
+  updateLikeBadge();
+  document.querySelectorAll('.card.liked-card').forEach(c => {
+    c.classList.remove('liked-card');
+    const btn = c.querySelector('.like-btn');
+    if (btn) { btn.classList.remove('liked'); btn.textContent = '♡'; }
+  });
+  renderLearningView();
+}
+
+/* ── 썸네일 큐 ── */
 let _running = 0;
 const MAX = 3, _queue = [];
 function _drain() {
@@ -305,9 +509,7 @@ async function _doThumb(card) {
     img.src = `/api/img?url=${encodeURIComponent(d.img)}`;
   } catch { twrap.remove(); }
 }
-function loadThumb(card) {
-  return new Promise(r => { _queue.push({ card, resolve: r }); _drain(); });
-}
+function loadThumb(card) { return new Promise(r => { _queue.push({ card, resolve: r }); _drain(); }); }
 const io = new IntersectionObserver(entries => {
   entries.forEach(e => { if (!e.isIntersecting) return; io.unobserve(e.target); loadThumb(e.target); });
 }, { rootMargin: '200px' });
@@ -319,52 +521,48 @@ document.getElementById('cats').addEventListener('click', e => {
   const btn = e.target.closest('.f-btn');
   if (!btn) return;
   document.querySelectorAll('#cats .f-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  _activeCat = btn.dataset.cat;
-  filterCards();
+  btn.classList.add('active'); _activeCat = btn.dataset.cat; filterCards();
 });
-
 document.getElementById('srcs').addEventListener('click', e => {
   const btn = e.target.closest('.f-btn');
   if (!btn) return;
   document.querySelectorAll('#srcs .f-btn').forEach(b => b.classList.remove('src-active'));
-  btn.classList.add('src-active');
-  _activeSrc = btn.dataset.src;
-  filterCards();
+  btn.classList.add('src-active'); _activeSrc = btn.dataset.src; filterCards();
 });
-
 function onScoreFilter(v) {
   _minScore = parseInt(v);
   document.getElementById('scoreVal').textContent = v + '+';
   filterCards();
 }
-
 function filterCards() {
   document.querySelectorAll('.card').forEach(card => {
-    const catOk  = _activeCat === '전체' || card.dataset.cat === _activeCat;
-    const srcOk  = _activeSrc === '전체' || card.dataset.src === _activeSrc;
+    const catOk   = _activeCat === '전체' || card.dataset.cat === _activeCat;
+    const srcOk   = _activeSrc === '전체' || card.dataset.src === _activeSrc;
     const scoreOk = parseInt(card.dataset.score || '6') >= _minScore;
     card.classList.toggle('hidden', !(catOk && srcOk && scoreOk));
   });
   updateCount();
 }
-
 function updateCount() {
-  const visible = document.querySelectorAll('.card:not(.hidden)').length;
-  document.getElementById('cnt').textContent = `${visible}개`;
+  const v = document.querySelectorAll('.card:not(.hidden)').length;
+  const badge = document.querySelector('.view-tab.active')?.querySelector('.like-badge');
+  // 상단 카운트는 탭 이름 옆에 별도 배지 없이 탭 타이틀로만 표시
+  // (더 넣으면 복잡해지니 제거)
 }
 
 /* ── 카드 생성 ── */
 function makeCard(post) {
   const used = getUsed();
+  const liked = isLiked(post.url);
   const card = document.createElement('div');
   card.className = 'card';
   card.dataset.url   = post.url;
   card.dataset.cat   = post.category || '기타';
   card.dataset.src   = post.source   || '';
   card.dataset.score = post.score != null ? post.score : 6;
-  if (used.has(post.url)) card.classList.add('used');
-  if ((post.score || 0) >= 9) card.classList.add('top-score');
+  if (used.has(post.url))   card.classList.add('used');
+  if ((post.score||0) >= 9) card.classList.add('top-score');
+  if (liked)                card.classList.add('liked-card');
 
   const cat   = post.category || '기타';
   const src   = post.source   || '';
@@ -372,11 +570,11 @@ function makeCard(post) {
   const date  = post.date || '';
   const score = post.score != null ? post.score : null;
   const scoreBadge = score != null
-    ? `<span class="score-badge${score >= 8 ? ' high' : ''}">${score}점</span>`
-    : '';
+    ? `<span class="score-badge${score>=8?' high':''}">${score}점</span>` : '';
 
   card.innerHTML = `
     <div class="card-actions">
+      <button class="act-btn like-btn${liked?' liked':''}" title="즐겨찾기">${liked?'❤':'♡'}</button>
       <button class="act-btn copy-btn" title="제목 복사">📋</button>
       <button class="act-btn use-btn" title="사용 표시">✓</button>
     </div>
@@ -390,9 +588,20 @@ function makeCard(post) {
         ${date ? `<span class="date-text">${esc(date)}</span>` : ''}
         ${rec ? `<span class="rec">${esc(rec)}</span>` : ''}
       </div>
-    </div>
-  `;
+    </div>`;
 
+  // ❤️ 즐겨찾기
+  card.querySelector('.like-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    const added = toggleLike(post);
+    btn.classList.toggle('liked', added);
+    btn.textContent = added ? '❤' : '♡';
+    card.classList.toggle('liked-card', added);
+    toast(added ? '❤️ 학습소에 저장됨' : '즐겨찾기 취소');
+  });
+
+  // 📋 복사
   card.querySelector('.copy-btn').addEventListener('click', e => {
     e.stopPropagation();
     navigator.clipboard.writeText(post.title).then(() => {
@@ -403,30 +612,20 @@ function makeCard(post) {
     });
   });
 
+  // ✓ 사용됨
   card.querySelector('.use-btn').addEventListener('click', e => {
     e.stopPropagation();
     const u = getUsed();
     if (u.has(post.url)) {
-      u.delete(post.url);
-      card.classList.remove('used');
-      e.currentTarget.classList.remove('marked');
-      toast('사용 취소');
+      u.delete(post.url); card.classList.remove('used'); e.currentTarget.classList.remove('marked'); toast('사용 취소');
     } else {
-      u.add(post.url);
-      card.classList.add('used');
-      e.currentTarget.textContent = '✕';
-      e.currentTarget.classList.add('marked');
-      toast('사용됨으로 표시');
+      u.add(post.url); card.classList.add('used');
+      e.currentTarget.textContent = '✕'; e.currentTarget.classList.add('marked'); toast('사용됨으로 표시');
     }
     saveUsed(u);
-    updateCount();
   });
 
-  card.addEventListener('click', e => {
-    if (e.target.closest('.act-btn')) return;
-    window.open(post.url, '_blank');
-  });
-
+  card.addEventListener('click', e => { if (e.target.closest('.act-btn')) return; window.open(post.url, '_blank'); });
   io.observe(card);
   return card;
 }
@@ -436,114 +635,98 @@ const SOURCES = [
   { key: 'ruli',   label: '루리웹',   chipId: 'chip-ruli',   est: 5  },
   { key: 'theqoo', label: '더쿠',     chipId: 'chip-theqoo', est: 5  },
   { key: 'instiz', label: '인스티즈', chipId: 'chip-instiz', est: 6  },
-  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 20 },
+  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 28 },
 ];
-const TOTAL_EST = Math.max(...SOURCES.map(s => s.est)); // 20초
+const TOTAL_EST = Math.max(...SOURCES.map(s => s.est));
 
-let _seenUrls = new Set();
-let _timerInterval = null;
-let _loadStart = 0;
-let _srcStatus = {};
-let _loading = false;
+let _seenUrls = new Set(), _timerInterval = null, _loadStart = 0;
+let _srcStatus = {}, _loading = false;
 
 function setChip(id, status, text) {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.className = `src-chip ${status}`;
-  el.textContent = text;
+  if (el) { el.className = `src-chip ${status}`; el.textContent = text; }
 }
 
 function updateTimer() {
   const elapsedSec = (Date.now() - _loadStart) / 1000;
   const elapsed = elapsedSec.toFixed(1);
-  const allDone = SOURCES.every(s => ['done', 'error'].includes(_srcStatus[s.key]));
-  const doneCnt = SOURCES.filter(s => ['done', 'error'].includes(_srcStatus[s.key])).length;
+  const allDone = SOURCES.every(s => ['done','error'].includes(_srcStatus[s.key]));
+  const doneCnt = SOURCES.filter(s => ['done','error'].includes(_srcStatus[s.key])).length;
   const total = document.querySelectorAll('.card').length;
-  const timerEl = document.getElementById('loadTimer');
-
-  // 남은 시간 계산: 가장 오래 걸릴 소스 기준
   const remaining = Math.max(0, TOTAL_EST - elapsedSec);
   const remSec = Math.ceil(remaining);
+  const timerEl = document.getElementById('loadTimer');
 
   if (allDone) {
-    timerEl.textContent = `✓ 완료 · ${elapsed}초 소요`;
+    timerEl.textContent = `✓ 완료 · ${elapsed}초`;
     timerEl.classList.add('done');
-  } else if (remaining > 0) {
+  } else if (remaining > 1) {
     timerEl.textContent = `약 ${remSec}초 후 완료`;
     timerEl.classList.remove('done');
   } else {
-    timerEl.textContent = `거의 완료...`;
+    timerEl.textContent = `거의 완료 중...`;
     timerEl.classList.remove('done');
   }
 
-  // 진행률 바 업데이트
-  const pct = allDone ? 100 : Math.min(95, (elapsedSec / TOTAL_EST) * 100);
+  const pct = allDone ? 100 : Math.min(92, (elapsedSec / TOTAL_EST) * 100);
   const bar = document.getElementById('loadProgressBar');
   if (bar) bar.style.width = pct + '%';
 
-  // 중앙 스피너 텍스트 업데이트
   const sub = document.getElementById('loadSub');
   if (sub) {
     if (allDone) {
-      sub.textContent = `완료 · ${total}개 수집 · ${elapsed}초 소요`;
-    } else if (remaining > 0) {
-      sub.textContent = `${doneCnt}/${SOURCES.length} 소스 완료 · ${total}개 수집 · 약 ${remSec}초 후 완료`;
+      sub.textContent = `완료 · ${total}개 · ${elapsed}초 소요`;
+    } else if (remaining > 1) {
+      sub.textContent = `${doneCnt}/${SOURCES.length} 소스 · ${total}개 수집 중 · 약 ${remSec}초 후 완료`;
     } else {
-      sub.textContent = `${doneCnt}/${SOURCES.length} 소스 완료 · ${total}개 수집 · 거의 다 됐어요`;
+      sub.textContent = `${doneCnt}/${SOURCES.length} 소스 · ${total}개 · 거의 다 됐어요`;
     }
   }
-
-  // 스피너 아래 소스 도트 업데이트
   SOURCES.forEach(s => {
     const dot = document.getElementById(`dot-${s.key}`);
     if (!dot) return;
     const st = _srcStatus[s.key] || 'waiting';
     dot.className = `load-dot ${st}`;
-    if (st === 'done') dot.textContent = `${s.label} ✓`;
-    else if (st === 'loading') dot.textContent = `${s.label} ↻`;
-    else if (st === 'error') dot.textContent = `${s.label} ✗`;
-    else dot.textContent = s.label;
+    dot.textContent = st==='done' ? `${s.label} ✓` : st==='loading' ? `${s.label} ↻` : st==='error' ? `${s.label} ✗` : s.label;
   });
 }
 
-async function fetchSource(src, force) {
+async function fetchSource(srcObj, force) {
   const startAt = Date.now();
-  _srcStatus[src.key] = 'loading';
-  setChip(src.chipId, 'loading', `${src.label} ↻`);
+  _srcStatus[srcObj.key] = 'loading';
+  setChip(srcObj.chipId, 'loading', `${srcObj.label} ↻`);
+
+  // 30초 프론트 타임아웃 (AbortController)
+  const ctrl = new AbortController();
+  const abortTimer = setTimeout(() => ctrl.abort(), 30000);
 
   try {
-    const url = `/api/feed/source?src=${src.key}${force ? '&refresh=1' : ''}`;
-    const res = await fetch(url);
+    const url = `/api/feed/source?src=${srcObj.key}${force ? '&refresh=1' : ''}`;
+    const res = await fetch(url, { signal: ctrl.signal });
     const data = await res.json();
-    const elapsed = ((Date.now() - startAt) / 1000).toFixed(1);
+    clearTimeout(abortTimer);
+    const el = ((Date.now() - startAt) / 1000).toFixed(1);
 
-    if (data.error) {
-      _srcStatus[src.key] = 'error';
-      setChip(src.chipId, 'error', `${src.label} ✗`);
-      return;
-    }
+    if (data.error) { throw new Error(data.error); }
 
     const posts = (data.posts || []).filter(p => !_seenUrls.has(p.url));
     posts.forEach(p => _seenUrls.add(p.url));
-
-    if (posts.length > 0) {
-      addCardsToGrid(posts);
-    }
-
-    _srcStatus[src.key] = 'done';
-    setChip(src.chipId, 'done', `${src.label} ✓ ${posts.length}개 (${elapsed}s)`);
+    if (posts.length > 0) addCardsToGrid(posts);
+    _srcStatus[srcObj.key] = 'done';
+    setChip(srcObj.chipId, 'done', `${srcObj.label} ✓ ${posts.length}개 (${el}s)`);
   } catch (e) {
-    _srcStatus[src.key] = 'error';
-    setChip(src.chipId, 'error', `${src.label} ✗`);
+    clearTimeout(abortTimer);
+    _srcStatus[srcObj.key] = 'error';
+    const label = e.name === 'AbortError' ? `${srcObj.label} ⏱ 타임아웃` : `${srcObj.label} ✗`;
+    setChip(srcObj.chipId, 'error', label);
   }
 }
 
 function addCardsToGrid(posts) {
   const grid = document.getElementById('grid');
   const placeholder = grid.querySelector('.state-wrap');
+  posts.sort((a,b) => (b.score||5) - (a.score||5));
   const frag = document.createDocumentFragment();
-  // Sort this batch by score before inserting
-  posts.sort((a, b) => (b.score || 5) - (a.score || 5));
   posts.forEach(p => frag.appendChild(makeCard(p)));
   grid.appendChild(frag);
   if (placeholder) placeholder.remove();
@@ -554,82 +737,67 @@ function addCardsToGrid(posts) {
 async function load(force = false) {
   if (_loading) return;
   _loading = true;
-
   const grid = document.getElementById('grid');
   const btn  = document.getElementById('rfbtn');
   const bar  = document.getElementById('loadBar');
   btn.classList.add('loading');
 
-  if (force) {
-    grid.innerHTML = '';
-    _seenUrls = new Set();
-  }
+  if (force) { grid.innerHTML = ''; _seenUrls = new Set(); }
 
-  // 로딩 바 초기화
-  SOURCES.forEach(s => {
-    _srcStatus[s.key] = 'waiting';
-    setChip(s.chipId, 'waiting', `${s.label} 대기`);
-  });
-  document.getElementById('loadTimer').textContent = '0.0초';
+  SOURCES.forEach(s => { _srcStatus[s.key] = 'waiting'; setChip(s.chipId, 'waiting', `${s.label} 대기`); });
+  document.getElementById('loadTimer').textContent = '대기 중';
   document.getElementById('loadTimer').classList.remove('done');
   bar.classList.remove('hidden');
+
+  const pw = document.getElementById('loadProgressWrap');
+  const pb = document.getElementById('loadProgressBar');
+  if (pw) pw.classList.remove('hidden');
+  if (pb) pb.style.width = '0%';
 
   _loadStart = Date.now();
   clearInterval(_timerInterval);
   _timerInterval = setInterval(updateTimer, 200);
 
-  // 진행률 바 표시
-  const progressWrap = document.getElementById('loadProgressWrap');
-  const progressBar = document.getElementById('loadProgressBar');
-  if (progressWrap) { progressWrap.classList.remove('hidden'); }
-  if (progressBar) { progressBar.style.width = '0%'; }
-
-  // 빈 그리드면 placeholder 표시
   if (!grid.querySelector('.card')) {
     grid.innerHTML = `
       <div class="state-wrap" id="loadState">
         <div class="spinner"></div>
         <p class="load-headline">소스별로 불러오는 중...</p>
-        <p class="load-sub" id="loadSub">0/${SOURCES.length} 소스 완료 · 0개 수집 · 0.0초</p>
+        <p class="load-sub" id="loadSub">0/${SOURCES.length} 소스 · 약 ${TOTAL_EST}초 후 완료</p>
         <div class="load-dots">
-          ${SOURCES.map(s => `<span class="load-dot" id="dot-${s.key}">${s.label}</span>`).join('')}
+          ${SOURCES.map(s=>`<span class="load-dot" id="dot-${s.key}">${s.label}</span>`).join('')}
         </div>
-      </div>
-    `;
+      </div>`;
   }
-
-  document.getElementById('cnt').textContent = '로딩 중...';
+  document.getElementById('rfbtn').querySelector('span:last-child').textContent = '로딩 중...';
 
   try {
-    // 모든 소스 병렬 호출 — 응답 오는 순서대로 카드 추가됨
     await Promise.all(SOURCES.map(s => fetchSource(s, force)));
   } finally {
     clearInterval(_timerInterval);
     updateTimer();
 
     const placeholder = grid.querySelector('.state-wrap');
-    const cardCount = grid.querySelectorAll('.card').length;
-    if (placeholder && cardCount === 0) {
-      placeholder.innerHTML = '<p>게시물이 없습니다</p>';
+    if (placeholder && grid.querySelectorAll('.card').length === 0) {
+      placeholder.innerHTML = '<p style="color:#555">게시물이 없습니다. 새로고침을 눌러보세요.</p>';
     } else if (placeholder) {
       placeholder.remove();
     }
 
+    if (pb) pb.style.width = '100%';
     filterCards();
     btn.classList.remove('loading');
+    btn.querySelector('span:last-child').textContent = '새로고침';
     _loading = false;
 
-    // 진행률 바 100% → 3초 후 숨기기
-    const progressBar2 = document.getElementById('loadProgressBar');
-    if (progressBar2) progressBar2.style.width = '100%';
     setTimeout(() => {
       bar.classList.add('hidden');
-      const pw = document.getElementById('loadProgressWrap');
       if (pw) pw.classList.add('hidden');
     }, 3000);
   }
 }
 
+updateLikeBadge();
 load();
 </script>
 </body>

@@ -884,16 +884,22 @@ async def _fetch_boredpanda():
 
 
 async def _fetch_boredpanda_classified():
-    """BP 크롤링 → AI 번역+채점. 전체 25초 타임아웃."""
+    """BP 크롤링 → AI 번역+채점. 전체 28초 하드 타임아웃."""
     try:
-        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=15.0)
+        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=28.0)
+    except asyncio.TimeoutError:
+        return [], 0
+
+
+async def _bp_fetch_and_score():
+    try:
+        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=12.0)
     except asyncio.TimeoutError:
         posts = []
     if not posts:
         return [], 0
 
     if not _sf_available or _translate_score_fn is None:
-        # AI 없으면 영문 그대로
         return posts, 0
 
     loop = asyncio.get_event_loop()
