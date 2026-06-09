@@ -253,6 +253,62 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+    /* ── 검색 ── */
+    .search-wrap { display:flex; align-items:center; gap:6px; }
+    .search-input {
+      background:#111; border:1px solid #333; color:var(--text);
+      padding:5px 10px; border-radius:6px; font-size:12px; width:0;
+      transition: width 0.2s, opacity 0.2s; opacity:0; pointer-events:none;
+    }
+    .search-input.open { width:160px; opacity:1; pointer-events:all; }
+    .search-btn {
+      background:var(--surface); border:1px solid var(--border); color:var(--muted);
+      padding:5px 10px; border-radius:6px; cursor:pointer; font-size:13px;
+    }
+    .search-btn:hover { color:var(--text); }
+
+    /* ── 정렬 버튼 ── */
+    .sort-row { display:flex; gap:4px; padding:0 16px 8px; align-items:center; }
+    .sort-label { font-size:11px; color:var(--muted); margin-right:4px; }
+    .sort-btn {
+      flex-shrink:0; padding:3px 10px; border-radius:20px; font-size:11px;
+      background:var(--surface); border:1px solid var(--border); color:var(--muted); cursor:pointer;
+    }
+    .sort-btn.active { background:#1a2a1a; border-color:#3d6e3d; color:#4ade80; }
+
+    /* ── 쇼츠 제목 생성 모달 ── */
+    .modal-overlay {
+      position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1000;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .modal-overlay.hidden { display:none; }
+    .modal-card {
+      background:#111; border:1px solid #2e2e2e; border-radius:12px;
+      width:min(480px,90vw); padding:20px; animation:fadeIn 0.15s ease;
+    }
+    .modal-header {
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:14px;
+    }
+    .modal-title { font-size:14px; font-weight:700; color:var(--text); }
+    .modal-source { font-size:11px; color:var(--muted); margin-top:2px; }
+    .modal-close { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; }
+    .modal-close:hover { color:var(--text); }
+    .title-result {
+      background:#0f1a0f; border:1px solid #1a3320; border-radius:8px;
+      padding:12px 14px; margin-bottom:8px; cursor:pointer;
+      transition:border-color 0.12s;
+    }
+    .title-result:hover { border-color:#4ade80; }
+    .title-result-text { font-size:14px; color:var(--text); line-height:1.5; }
+    .title-result-hint { font-size:10px; color:var(--muted); margin-top:4px; }
+    .title-result.copied { border-color:#4ade80; background:#0d200d; }
+    .modal-loading { text-align:center; padding:30px; color:var(--muted); font-size:13px; }
+    .modal-spinner { width:24px; height:24px; border:2px solid #333; border-top-color:#4ade80; border-radius:50%; animation:spin 0.7s linear infinite; margin:0 auto 10px; }
+    .gen-btn { background:#0f1a0f; border:1px solid #1a3320; color:#4ade80; padding:2px 8px; border-radius:4px; font-size:12px; cursor:pointer; }
+    .gen-btn:hover { background:#1a3320; }
   </style>
 </head>
 <body>
@@ -264,7 +320,11 @@
     <button class="view-tab" id="tab-learn" onclick="switchView('learn')">
       ❤️ 학습소 <span class="like-badge" id="likeBadge"></span>
     </button>
-    <div class="header-right">
+    <div class="header-right" style="display:flex;align-items:center;gap:8px;">
+      <div class="search-wrap">
+        <input class="search-input" id="searchInput" placeholder="소재 검색..." oninput="onSearch(this.value)" onkeydown="if(event.key==='Escape'){clearSearch()}">
+        <button class="search-btn" id="searchBtn" onclick="toggleSearch()" title="검색">🔍</button>
+      </div>
       <button class="refresh-btn" id="rfbtn" onclick="load(true)">
         <span class="icon">↻</span><span>새로고침</span>
       </button>
@@ -308,6 +368,13 @@
       <label>최소 점수</label>
       <input type="range" id="minScore" min="1" max="10" value="5" step="1" oninput="onScoreFilter(this.value)">
       <span class="score-val" id="scoreVal">5+</span>
+    </div>
+    <div class="sort-row">
+      <span class="sort-label">정렬</span>
+      <button class="sort-btn active" data-sort="smart" onclick="setSort('smart')">🎯 스마트</button>
+      <button class="sort-btn" data-sort="score" onclick="setSort('score')">점수↓</button>
+      <button class="sort-btn" data-sort="rec" onclick="setSort('rec')">추천↓</button>
+      <button class="sort-btn" data-sort="random" onclick="setSort('random')">🎲 랜덤</button>
     </div>
   </div>
 </div>
@@ -570,10 +637,12 @@ function onScoreFilter(v) {
 function filterCards() {
   document.querySelectorAll('.card').forEach(card => {
     const cardTags = (card.dataset.tags || card.dataset.cat || '').split(',');
-    const tagOk  = _activeTags.size === 0 || cardTags.some(t => _activeTags.has(t));
-    const srcOk  = _activeSrc === '전체' || card.dataset.src === _activeSrc;
-    const scoreOk = parseInt(card.dataset.score || '6') >= _minScore;
-    card.classList.toggle('hidden', !(tagOk && srcOk && scoreOk));
+    const tagOk    = _activeTags.size === 0 || cardTags.some(t => _activeTags.has(t));
+    const srcOk    = _activeSrc === '전체' || card.dataset.src === _activeSrc;
+    const scoreOk  = parseInt(card.dataset.score || '5') >= _minScore;
+    const title    = card.querySelector('.card-title')?.textContent?.toLowerCase() || '';
+    const searchOk = !_searchQuery || title.includes(_searchQuery);
+    card.classList.toggle('hidden', !(tagOk && srcOk && scoreOk && searchOk));
   });
   updateCount();
 }
@@ -596,6 +665,7 @@ function makeCard(post) {
   card.dataset.cat   = tags[0];
   card.dataset.src   = post.source || '';
   card.dataset.score = post.score != null ? post.score : 6;
+  card.dataset.rec   = post.recommend || '0';
   if (used.has(post.url))   card.classList.add('used');
   if ((post.score||0) >= 9) card.classList.add('top-score');
   if (liked)                card.classList.add('liked-card');
@@ -612,6 +682,7 @@ function makeCard(post) {
     <div class="card-actions">
       <button class="act-btn like-btn${liked?' liked':''}" title="즐겨찾기">${liked?'❤':'♡'}</button>
       <button class="act-btn copy-btn" title="제목 복사">📋</button>
+      <button class="act-btn gen-btn" title="쇼츠 제목 생성">🎬</button>
       <button class="act-btn use-btn" title="사용 표시">✓</button>
     </div>
     <div class="thumb-wrap"><div class="skeleton"></div></div>
@@ -646,6 +717,12 @@ function makeCard(post) {
       toast(`"${post.title.slice(0,20)}..." 복사됨`);
       setTimeout(() => { btn.textContent = '📋'; btn.classList.remove('copied'); }, 1500);
     });
+  });
+
+  // 🎬 쇼츠 제목 생성
+  card.querySelector('.gen-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    openTitleGen(post.title);
   });
 
   // ✓ 사용됨
@@ -761,12 +838,12 @@ async function fetchSource(srcObj, force) {
 function addCardsToGrid(posts) {
   const grid = document.getElementById('grid');
   const placeholder = grid.querySelector('.state-wrap');
-  posts.sort((a,b) => (b.score||5) - (a.score||5));
   const frag = document.createDocumentFragment();
   posts.forEach(p => frag.appendChild(makeCard(p)));
   grid.appendChild(frag);
   if (placeholder) placeholder.remove();
   filterCards();
+  applySort();
 }
 
 /* ── 메인 로드 ── */
@@ -835,6 +912,130 @@ async function load(force = false) {
 
 updateLikeBadge();
 load();
+
+// ── 자동 새로고침 (30분마다 캐시 만료 시 백그라운드 갱신) ──
+setInterval(() => {
+  if (document.hidden || _loading) return;
+  fetch('/api/feed/source?src=ruli&refresh=1').catch(()=>{});
+  fetch('/api/feed/source?src=bp&refresh=1').catch(()=>{});
+  fetch('/api/feed/source?src=theqoo&refresh=1').catch(()=>{});
+}, 30 * 60 * 1000);
+
+// ── 검색 ──
+let _searchQuery = '';
+function toggleSearch() {
+  const inp = document.getElementById('searchInput');
+  inp.classList.toggle('open');
+  if (inp.classList.contains('open')) inp.focus();
+  else { inp.value = ''; _searchQuery = ''; filterCards(); }
+}
+function onSearch(v) {
+  _searchQuery = v.toLowerCase().trim();
+  filterCards();
+}
+function clearSearch() {
+  const inp = document.getElementById('searchInput');
+  inp.value = ''; _searchQuery = '';
+  inp.classList.remove('open');
+  filterCards();
+}
+
+// ── 정렬 ──
+let _sortMode = 'smart';
+function setSort(mode) {
+  _sortMode = mode;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === mode));
+  applySort();
+}
+function applySort() {
+  const grid = document.getElementById('grid');
+  const cards = Array.from(grid.querySelectorAll('.card'));
+  const parseRec = s => { const n = parseInt((s||'').replace(/,/g,'')); return isNaN(n)?0:n; };
+  cards.sort((a, b) => {
+    const sa = parseInt(a.dataset.score||5), sb = parseInt(b.dataset.score||5);
+    const ra = parseRec(a.dataset.rec), rb = parseRec(b.dataset.rec);
+    if (_sortMode === 'score') return sb - sa;
+    if (_sortMode === 'rec')   return rb - ra;
+    if (_sortMode === 'random') return Math.random() - 0.5;
+    // smart: score×2 + log(rec+1)
+    const va = sa*2 + Math.log(ra+1), vb = sb*2 + Math.log(rb+1);
+    return vb - va;
+  });
+  const frag = document.createDocumentFragment();
+  cards.forEach(c => frag.appendChild(c));
+  const placeholder = grid.querySelector('.state-wrap');
+  grid.appendChild(frag);
+  if (placeholder) grid.prepend(placeholder);
+}
+
+// ── 쇼츠 제목 생성 모달 ──
+let _currentGenTitle = '';
+function openTitleGen(title) {
+  _currentGenTitle = title;
+  const modal = document.getElementById('titleModal');
+  modal.classList.remove('hidden');
+  const body = document.getElementById('modalBody');
+  body.innerHTML = `<div class="modal-loading"><div class="modal-spinner"></div>AI가 쇼츠 제목을 생성 중...</div>`;
+  document.getElementById('modalSourceTitle').textContent = title.length > 40 ? title.slice(0,40)+'...' : title;
+  fetch('/api/title_gen?title=' + encodeURIComponent(title))
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { body.innerHTML = `<div class="modal-loading" style="color:#f87171">${esc(data.error)}</div>`; return; }
+      body.innerHTML = (data.titles||[]).map((t,i) => `
+        <div class="title-result" onclick="copyGenTitle(this,'${esc(t).replace(/'/g,"\\'")}')">
+          <div class="title-result-text">${esc(t)}</div>
+          <div class="title-result-hint">클릭해서 복사</div>
+        </div>`).join('') || '<div class="modal-loading">제목 생성 실패</div>';
+    })
+    .catch(() => { body.innerHTML = `<div class="modal-loading" style="color:#f87171">오류 발생</div>`; });
+}
+function copyGenTitle(el, title) {
+  navigator.clipboard.writeText(title).catch(()=>{});
+  el.classList.add('copied');
+  el.querySelector('.title-result-hint').textContent = '✓ 복사됨';
+  setTimeout(() => { el.classList.remove('copied'); el.querySelector('.title-result-hint').textContent = '클릭해서 복사'; }, 2000);
+}
+function closeModal() {
+  document.getElementById('titleModal').classList.add('hidden');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── 키보드 단축키 ──
+let _focusedIdx = -1;
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const cards = Array.from(document.querySelectorAll('.card:not(.hidden)'));
+  if (!cards.length) return;
+  if (e.key === 'j' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    _focusedIdx = Math.min(_focusedIdx + 1, cards.length - 1);
+    cards[_focusedIdx]?.scrollIntoView({ behavior:'smooth', block:'center' });
+  } else if (e.key === 'k' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    _focusedIdx = Math.max(_focusedIdx - 1, 0);
+    cards[_focusedIdx]?.scrollIntoView({ behavior:'smooth', block:'center' });
+  } else if (e.key === 'o' && _focusedIdx >= 0) {
+    window.open(cards[_focusedIdx].dataset.url, '_blank');
+  } else if (e.key === '/' || e.key === 's') {
+    e.preventDefault();
+    const inp = document.getElementById('searchInput');
+    inp.classList.add('open'); inp.focus();
+  }
+});
 </script>
+
+<!-- 쇼츠 제목 생성 모달 -->
+<div class="modal-overlay hidden" id="titleModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">🎬 쇼츠 제목 생성</div>
+        <div class="modal-source" id="modalSourceTitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
 </body>
 </html>

@@ -736,10 +736,13 @@ def _fetch_instiz():
             return items
         soup = BeautifulSoup(html, "html.parser")
         # 셀렉터 우선순위: 인스티즈는 버전별로 다름
-        anchors = (soup.select("a.listsubject")
+        # 실제 확인된 셀렉터 우선 (.pt 컨테이너 내 게시물 링크)
+        anchors = (soup.select(".pt a[href*='/pt/']")
+                   or soup.select("a.listsubject")
                    or soup.select(".list_wrap a[href*='/pt/']")
-                   or soup.select("table a[href*='instiz.net/pt/']")
-                   or soup.select(".memo_list a"))
+                   or soup.select("table a[href*='instiz.net/pt/']"))
+        # 숫자 없는 /pt/ 링크만 (게시물 ID 포함)
+        anchors = [a for a in anchors if re.search(r'/pt/\d+', a.get("href", ""))]
         for a in anchors:
             title = a.get_text(strip=True)
             href  = a.get("href", "")
@@ -1240,6 +1243,51 @@ def api_suggestions_post():
 @app.route("/api/score_available")
 def api_score_available():
     return jsonify({"available": _sf_available})
+
+
+@app.route("/api/title_gen")
+def api_title_gen():
+    """소재 제목 → @puppyd5g 채널 스타일 쇼츠 제목 3개 생성."""
+    title = request.args.get("title", "").strip()
+    if not title:
+        return jsonify({"titles": []})
+    if not _sf_available:
+        return jsonify({"error": "GROQ_API_KEY 필요"}), 503
+    try:
+        from openai import OpenAI as _OAI
+        _cli = _OAI(base_url="https://api.groq.com/openai/v1", api_key=os.environ["GROQ_API_KEY"])
+        prompt = f"""유튜브 쇼츠 채널 @puppyd5g ("퍼피독 — 굳이 궁금하지 않았던 이야기") 스타일로 아래 소재의 쇼츠 제목을 3개 만들어라.
+
+채널 히트작 예시 (참고):
+- "특이점이 와버린 경마경주" (경마 반전 8M)
+- "아빠가 보는 아들과 딸의 차이란" (공감+반전 5.8M)
+- "너무 잘생겨서 문제였던 교수님" (인물 반전 2.7M)
+- "노래는 유명한데 어디사람이여유?" (잡학 호기심 3M)
+
+규칙:
+- 20자 이내
+- 반전/의외성 구조 ("이랬는데", "알고보니", "의외로", "근데 사실")
+- 클릭하고 싶은 호기심 유발
+- 이모지·특수기호 없음
+- 자연스러운 한국어 구어체
+
+소재: {title}
+
+출력: ["제목1", "제목2", "제목3"] JSON 배열만. 다른 텍스트 금지."""
+        resp = _cli.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            max_tokens=200,
+            temperature=0.9,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        titles = json.loads(raw)
+        if isinstance(titles, list):
+            return jsonify({"titles": [str(t)[:30] for t in titles[:3]]})
+        return jsonify({"titles": []})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/score")
