@@ -587,19 +587,29 @@ function _drain() {
   }
 }
 async function _doThumb(card) {
-  const url = card.dataset.url;
-  const skel = card.querySelector('.skeleton');
-  const twrap = card.querySelector('.thumb-wrap');
-  if (!url || !twrap) return;
+  const url    = card.dataset.url;
+  const direct = card.dataset.img;
+  const twrap  = card.querySelector('.thumb-wrap');
+  if (!twrap) return;
+
+  const showImg = (imgUrl) => {
+    const img = document.createElement('img');
+    img.className = 'thumb'; img.alt = '';
+    const skel = twrap.querySelector('.skeleton');
+    img.onload  = () => { if (skel) skel.remove(); twrap.appendChild(img); };
+    img.onerror = () => { twrap.remove(); };
+    img.src = `/api/img?url=${encodeURIComponent(imgUrl)}`;
+  };
+
+  // 직접 이미지 URL 있으면 바로 표시 (BP 등)
+  if (direct) { showImg(direct); return; }
+
+  if (!url) { twrap.remove(); return; }
   try {
     const r = await fetch(`/api/thumb?url=${encodeURIComponent(url)}`);
     const d = await r.json();
     if (!d.img) { twrap.remove(); return; }
-    const img = document.createElement('img');
-    img.className = 'thumb'; img.alt = '';
-    img.onload  = () => { if (skel) skel.remove(); twrap.appendChild(img); };
-    img.onerror = () => { twrap.remove(); };
-    img.src = `/api/img?url=${encodeURIComponent(d.img)}`;
+    showImg(d.img);
   } catch { twrap.remove(); }
 }
 function loadThumb(card) { return new Promise(r => { _queue.push({ card, resolve: r }); _drain(); }); }
@@ -675,6 +685,7 @@ function makeCard(post) {
   card.dataset.src   = post.source || '';
   card.dataset.score = post.score != null ? post.score : 6;
   card.dataset.rec   = post.recommend || '0';
+  card.dataset.img   = post.img || '';  // BP 등 직접 이미지 URL 보유 시
   if (used.has(post.url))   card.classList.add('used');
   if ((post.score||0) >= 9) card.classList.add('top-score');
   if (liked)                card.classList.add('liked-card');
