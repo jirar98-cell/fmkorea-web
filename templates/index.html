@@ -336,6 +336,7 @@
     <span class="src-chip waiting" id="chip-ruli">루리웹 대기</span>
     <span class="src-chip waiting" id="chip-theqoo">더쿠 대기</span>
     <span class="src-chip waiting" id="chip-instiz">인스티즈 대기</span>
+    <span class="src-chip waiting" id="chip-dogdrip">개드립 대기</span>
     <span class="src-chip waiting" id="chip-bp">BP 대기</span>
     <span class="load-timer" id="loadTimer">대기 중</span>
   </div>
@@ -362,6 +363,7 @@
       <button class="f-btn" data-src="BP">BoredPanda</button>
       <button class="f-btn" data-src="더쿠">더쿠</button>
       <button class="f-btn" data-src="인스티즈">인스티즈</button>
+      <button class="f-btn" data-src="개드립">개드립</button>
       <button class="f-btn" data-src="펨코">펨코</button>
     </div>
     <div class="score-filter">
@@ -375,6 +377,7 @@
       <button class="sort-btn" data-sort="score" onclick="setSort('score')">점수↓</button>
       <button class="sort-btn" data-sort="rec" onclick="setSort('rec')">추천↓</button>
       <button class="sort-btn" data-sort="random" onclick="setSort('random')">🎲 랜덤</button>
+      <span id="feedCount" style="margin-left:auto;font-size:11px;color:#444;"></span>
     </div>
   </div>
 </div>
@@ -528,6 +531,12 @@ function renderLearningView() {
       <div class="stat-card"><div class="stat-num">${sorted.length}</div><div class="stat-label">카테고리 수</div></div>
     </div>
     <div class="insight-box">${insightText}</div>
+    <div style="margin-bottom:12px">
+      <button onclick="runLearnSuggest()" style="background:#0f1a2d;border:1px solid #1a3350;color:#60a5fa;padding:8px 16px;border-radius:8px;font-size:12px;cursor:pointer;width:100%">
+        🤖 AI 소재 방향 분석 (즐겨찾기 기반)
+      </button>
+      <div id="learnSuggestResult" style="display:none;margin-top:10px;background:#0a1520;border:1px solid #1a3350;border-radius:8px;padding:14px;font-size:12px;line-height:1.8"></div>
+    </div>
     <div class="pref-section">
       <div class="section-title">카테고리 성향</div>
       ${bars}
@@ -647,10 +656,10 @@ function filterCards() {
   updateCount();
 }
 function updateCount() {
-  const v = document.querySelectorAll('.card:not(.hidden)').length;
-  const badge = document.querySelector('.view-tab.active')?.querySelector('.like-badge');
-  // 상단 카운트는 탭 이름 옆에 별도 배지 없이 탭 타이틀로만 표시
-  // (더 넣으면 복잡해지니 제거)
+  const visible = document.querySelectorAll('.card:not(.hidden)').length;
+  const total   = document.querySelectorAll('.card').length;
+  const el = document.getElementById('feedCount');
+  if (el) el.textContent = total > 0 ? `${visible}개 표시 중 (전체 ${total}개)` : '';
 }
 
 /* ── 카드 생성 ── */
@@ -745,10 +754,11 @@ function makeCard(post) {
 
 /* ── 소스별 로딩 ── */
 const SOURCES = [
-  { key: 'ruli',   label: '루리웹',   chipId: 'chip-ruli',   est: 5  },
-  { key: 'theqoo', label: '더쿠',     chipId: 'chip-theqoo', est: 5  },
-  { key: 'instiz', label: '인스티즈', chipId: 'chip-instiz', est: 6  },
-  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 90 },
+  { key: 'ruli',    label: '루리웹',   chipId: 'chip-ruli',    est: 8  },
+  { key: 'theqoo',  label: '더쿠',     chipId: 'chip-theqoo',  est: 8  },
+  { key: 'instiz',  label: '인스티즈', chipId: 'chip-instiz',  est: 8  },
+  { key: 'dogdrip', label: '개드립',   chipId: 'chip-dogdrip', est: 8  },
+  { key: 'bp',      label: 'BP',       chipId: 'chip-bp',      est: 90 },
 ];
 const TOTAL_EST = Math.max(...SOURCES.map(s => s.est));
 
@@ -913,12 +923,44 @@ async function load(force = false) {
 updateLikeBadge();
 load();
 
+// ── 학습소 AI 소재 방향 분석 ──
+function runLearnSuggest() {
+  const likes = getLikes();
+  if (!likes.length) { toast('즐겨찾기한 소재가 없어요'); return; }
+  const resultEl = document.getElementById('learnSuggestResult');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<span style="color:#60a5fa">🤖 AI 분석 중...</span>';
+  const tagDist = {};
+  const titles = likes.slice(0,10).map(l => l.title);
+  likes.forEach(l => {
+    const ltags = Array.isArray(l.tags) ? l.tags : [l.category||'기타'];
+    ltags.forEach(t => { tagDist[t] = (tagDist[t]||0) + 1; });
+  });
+  fetch('/api/learn_suggest', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({tags: tagDist, titles})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.error) { resultEl.innerHTML = `<span style="color:#f87171">오류: ${esc(d.error)}</span>`; return; }
+    const dirs = (d.directions||[]).map(s=>`<li style="color:#a3e635">→ ${esc(s)}</li>`).join('');
+    const avoids = (d.avoid||[]).map(s=>`<li style="color:#f87171">✕ ${esc(s)}</li>`).join('');
+    resultEl.innerHTML = `
+      <div style="font-weight:700;color:#fff;margin-bottom:8px">📊 ${esc(d.summary||'')}</div>
+      <div style="color:#888;margin-bottom:4px">다음에 찾으면 좋은 소재:</div>
+      <ul style="margin:0 0 10px 16px;padding:0">${dirs}</ul>
+      ${avoids ? `<div style="color:#888;margin-bottom:4px">피하면 좋은 소재:</div><ul style="margin:0 0 0 16px;padding:0">${avoids}</ul>` : ''}`;
+  })
+  .catch(() => { resultEl.innerHTML = '<span style="color:#f87171">분석 실패</span>'; });
+}
+
 // ── 자동 새로고침 (30분마다 캐시 만료 시 백그라운드 갱신) ──
 setInterval(() => {
   if (document.hidden || _loading) return;
-  fetch('/api/feed/source?src=ruli&refresh=1').catch(()=>{});
-  fetch('/api/feed/source?src=bp&refresh=1').catch(()=>{});
-  fetch('/api/feed/source?src=theqoo&refresh=1').catch(()=>{});
+  ['ruli','theqoo','instiz','dogdrip','bp'].forEach(src =>
+    fetch(`/api/feed/source?src=${src}&refresh=1`).catch(()=>{})
+  );
 }, 30 * 60 * 1000);
 
 // ── 검색 ──

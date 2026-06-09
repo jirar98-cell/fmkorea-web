@@ -1,40 +1,46 @@
 # 세션 인수인계 — 퍼피독 소재 피드
 
 > 이 파일을 읽으면 지금 어디까지 왔는지 바로 알 수 있음.
-> Claude가 매 세션 끝날 때 여기를 업데이트함.
 
 ## 마지막 세션: 2026-06-10
 
-### 완료된 작업
-- **curl_cffi 전체 적용** — 루리웹/더쿠/인스티즈 전부 `_html_cffi()` 헬퍼로 전환 (Railway IP 차단 우회)
-  - `_html_cffi(url, referer, timeout)` — curl_cffi 1차, requests fallback 구조
-- **인스티즈 셀렉터 이중화** — `a.listsubject` 없으면 `table.board_list a[href*='/pt/']` 시도
-- **BP 6섹션 × 10개 복원** — animals/funny/interesting/people/life/arts (60개 → AI 5배치)
-- **BP 타임아웃 28초→45초** + 프론트 AbortController 30초→55초
-- **이미지 프록시 WebP화** — 480px→380px, JPEG 65%→WebP 50% (fallback JPEG 55%), `Cache-Control: public, max-age=86400`
-- **_img_cache 구조 변경** — `bytes` → `tuple[bytes, str]` (data, mimetype) 쌍으로 저장
-- **prewarm 빈결과 캐시 방지** — posts=[] 이면 캐시 건너뜀 (900초 동안 0개 반환 버그 수정)
-- **썸네일 동시 처리 3→6** (index.html MAX=6)
-- **카운트다운 타이머 est 28→45** (BP 예상 시간 반영)
+### 완료된 작업 (이번 세션)
+
+#### 인프라/성능
+- curl_cffi 전체 적용 — 루리웹/더쿠/인스티즈 Railway IP 차단 우회
+- **5페이지 병렬 스크래핑** — 루리웹/더쿠/인스티즈 각 5페이지 ThreadPoolExecutor 병렬
+- **AI 배치 동시실행** — 순차 → 3개 동시 (속도 3배)
+- **BP 160개** — 8섹션×20개, AI 전배치 동시실행, 타임아웃 90초
+- 점수 임계값 6→5, 추천 임계값 5→3 (더 많은 콘텐츠 통과)
+- 이미지 WebP 380px, Cache-Control 1일
+- prewarm 빈결과 캐시 방지
+- CACHE_TTL 900→1800초
+
+#### 태그 시스템
+- **복수 태그** — AI가 최대 2개 반환 (예: ["반전","동물"])
+- **8개 세분화 태그** — 반전/의외/동물/감동/유머/호기심/인물/공감
+- **다중선택 필터 OR** — 여러 태그 동시 선택 가능
+- 학습소 — 복수 태그 기반 통계
+
+#### 신기능
+- **🎬 쇼츠 제목 생성기** — 카드에서 클릭 → Groq AI로 채널 스타일 제목 3개 즉시 생성
+- **🔍 검색** — 헤더 검색버튼 → 실시간 제목 필터링 (/ 또는 s키)
+- **정렬 옵션** — 스마트/점수↓/추천↓/랜덤 전환
+- **키보드 단축키** — j/k 카드 이동, o 원문 열기, / 검색, ESC 닫기
+- **자동 새로고침** — 30분마다 백그라운드 캐시 갱신
+- 인스티즈 셀렉터 수정 (`.pt a[href*='/pt/']` + 숫자 ID 검증)
 
 ### 현재 알려진 이슈
-- **fmkorea IP 차단** — 공유기 재시작으로 해결. curl_cffi 코드 이미 있음.
-- **인스티즈 실제 HTML 구조 미검증** — Railway에서 curl_cffi로 접근은 되지만 셀렉터가 맞는지는 실 결과로 확인 필요
-- **BP 45초 타임아웃** — Railway Groq API 지연에 따라 AI 채점 일부 누락 가능성 (정상 동작 범위)
+- **인스티즈 0개 유지 가능** — 셀렉터 수정했으나 Railway에서 실제 결과 미확인
+- **BP 가끔 0개** — 90초 타임아웃이지만 Railway 부하에 따라 간헐적 실패
+- **fmkorea IP 차단** — 공유기 재시작으로 해결
 
 ### 다음 해야 할 것
-1. Railway 로그 확인: 루리웹/더쿠/인스티즈가 이제 몇 개씩 나오는지
-2. 인스티즈 셀렉터 결과 확인 — 여전히 0개면 실제 HTML 구조 분석 필요
-3. 학습소 → AI 피드백 루프: 즐겨찾기 카테고리 기반 scoring prompt 가중치 조정 (미구현)
+1. 개드립(dogdrip.net) 소스 추가 — 콘텐츠 볼륨 확대
+2. BP 실제 개수 확인 (Railway 로그)
+3. 인스티즈 결과 확인
 
-### 배포 방법
+### 배포
 ```
-cd "C:\Users\alsdn\OneDrive\바탕 화면\fmkorea_web"
-./deploy.ps1 "커밋 메시지"    # 로컬+Railway 동시 배포
+./deploy.ps1 "커밋 메시지"
 ```
-
-### 주요 파일
-- `app.py` — Flask 백엔드, `_html_cffi()` 헬퍼, 소스 크롤러, `/api/feed/source`, `/api/img`
-- `shorts_filter.py` — Groq AI 채점 (채널 DNA 포함)
-- `templates/index.html` — 프론트엔드 (피드 + 학습소 탭)
-- `deploy.ps1` — 배포 스크립트

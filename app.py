@@ -1085,11 +1085,66 @@ def api_feed():
         return jsonify({"error": str(e)}), 500
 
 
+def _fetch_dogdrip():
+    """개드립 인기글 3페이지 병렬 스크래핑."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _parse_page(page_num):
+        url = f"https://www.dogdrip.net/dogdrip?page={page_num}"
+        html = _html_cffi(url, referer="https://www.dogdrip.net/", timeout=12)
+        items = []
+        if not html:
+            return items
+        soup = BeautifulSoup(html, "html.parser")
+        # 개드립 셀렉터 — 다중 시도
+        anchors = (soup.select("a.ed-link")
+                   or soup.select(".ed-list a[href*='/dogdrip/']")
+                   or soup.select("table a[href*='/dogdrip/']")
+                   or [a for a in soup.select("a[href]")
+                       if "/dogdrip/" in a.get("href","") and len(a.get_text(strip=True)) > 4])
+        seen_hrefs = set()
+        for a in anchors:
+            title = a.get_text(strip=True)
+            href  = a.get("href", "")
+            if not title or len(title) < 4 or href in seen_hrefs:
+                continue
+            if is_filtered(title) or _NOTICE_PAT.search(title):
+                continue
+            seen_hrefs.add(href)
+            full_href = "https://www.dogdrip.net" + href if href.startswith("/") else href
+            li = a.find_parent("li") or a.find_parent("tr")
+            rec_el = li.select_one(".up_count, .ed-like, .recom, .num") if li else None
+            items.append({
+                "title": title, "url": full_href,
+                "date": "", "recommend": rec_el.get_text(strip=True) if rec_el else "",
+                "source": "개드립",
+            })
+        return items
+
+    results, seen_urls, seen_titles = [], set(), set()
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        for page_items in ex.map(_parse_page, range(1, 4)):
+            for item in page_items:
+                if item["url"] not in seen_urls and item["title"] not in seen_titles:
+                    seen_urls.add(item["url"])
+                    seen_titles.add(item["title"])
+                    results.append(item)
+    return results
+
+
+async def _fetch_dogdrip_classified():
+    loop = asyncio.get_event_loop()
+    posts = await loop.run_in_executor(None, _fetch_dogdrip)
+    tagged, _ = await _ai_filter_posts(posts)
+    return tagged, 0
+
+
 _SOURCE_MAP = {
-    "ruli":   ("ruli",   _fetch_ruliweb_classified,     "루리웹"),
-    "bp":     ("bp",     _fetch_boredpanda_classified,  "BP"),
-    "theqoo": ("theqoo", _fetch_theqoo_classified,      "더쿠"),
-    "instiz": ("instiz", _fetch_instiz_classified,       "인스티즈"),
+    "ruli":    ("ruli",    _fetch_ruliweb_classified,     "루리웹"),
+    "bp":      ("bp",      _fetch_boredpanda_classified,  "BP"),
+    "theqoo":  ("theqoo",  _fetch_theqoo_classified,      "더쿠"),
+    "instiz":  ("instiz",  _fetch_instiz_classified,      "인스티즈"),
+    "dogdrip": ("dogdrip", _fetch_dogdrip_classified,     "개드립"),
 }
 
 
@@ -1243,6 +1298,41 @@ def api_suggestions_post():
 @app.route("/api/score_available")
 def api_score_available():
     return jsonify({"available": _sf_available})
+
+
+@app.route("/api/learn_suggest", methods=["POST"])
+def api_learn_suggest():
+    """즐겨찾기 기반 다음 소재 방향 AI 분석."""
+    if not _sf_available:
+        return jsonify({"error": "GROQ_API_KEY 필요"}), 503
+    data = request.get_json(silent=True) or {}
+    tag_dist = data.get("tags", {})    # {"반전": 5, "동물": 3, ...}
+    titles   = data.get("titles", [])[:10]
+    if not tag_dist and not titles:
+        return jsonify({"error": "데이터 없음"}), 400
+    try:
+        from openai import OpenAI as _OAI
+        _cli = _OAI(base_url="https://api.groq.com/openai/v1", api_key=os.environ["GROQ_API_KEY"])
+        prompt = f"""@puppyd5g 쇼츠 채널 ("퍼피독 — 굳이 궁금하지 않았던 이야기") 운영자의 즐겨찾기 패턴을 분석해서 다음 소재 탐색 방향을 알려줘.
+
+즐겨찾기 태그 분포: {json.dumps(tag_dist, ensure_ascii=False)}
+즐겨찾기 제목 샘플: {json.dumps(titles, ensure_ascii=False)}
+
+채널 DNA: 반전구조, 의외성, 동물+반전, 보편공감이 핵심.
+
+출력 (JSON):
+{{"summary":"한 줄 성향 요약 (25자 이내)","directions":["다음에 찾으면 좋을 소재 방향 3가지 (각 20자)"],"avoid":["피하면 좋을 소재 1-2가지 (각 15자)"]}}
+
+JSON만. 다른 텍스트 금지."""
+        resp = _cli.chat.completions.create(
+            model="llama-3.1-8b-instant", max_tokens=400,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        raw = raw.replace("```json","").replace("```","").strip()
+        return jsonify(json.loads(raw))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/title_gen")
@@ -1429,11 +1519,12 @@ def api_yt_channels():
 def _prewarm():
     time.sleep(1)
     tasks = [
-        ("humor",  lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
-        ("ruli",   lambda: _run_async(_fetch_ruliweb_classified())),
-        ("bp",     lambda: _run_async(_fetch_boredpanda_classified())),
-        ("theqoo", lambda: _run_async(_fetch_theqoo_classified())),
-        ("instiz", lambda: _run_async(_fetch_instiz_classified())),
+        ("humor",    lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
+        ("ruli",     lambda: _run_async(_fetch_ruliweb_classified())),
+        ("bp",       lambda: _run_async(_fetch_boredpanda_classified())),
+        ("theqoo",   lambda: _run_async(_fetch_theqoo_classified())),
+        ("instiz",   lambda: _run_async(_fetch_instiz_classified())),
+        ("dogdrip",  lambda: _run_async(_fetch_dogdrip_classified())),
     ]
     for key, fn in tasks:
         try:
