@@ -822,23 +822,20 @@ def _parse_rec(rec_str) -> int:
         return 0
 
 
-# BoredPanda 섹션 — 반전/인물/잡학 강화, 동물 균형 조정
+# BoredPanda 섹션 — 4개로 압축 (속도 최우선)
 _BP_SECTIONS = [
-    ("https://www.boredpanda.com/animals/",      "동물"),
-    ("https://www.boredpanda.com/nature/",        "동물"),
-    ("https://www.boredpanda.com/funny/",         "반전"),
-    ("https://www.boredpanda.com/wtf/",           "반전"),
-    ("https://www.boredpanda.com/interesting/",   "잡학"),
-    ("https://www.boredpanda.com/history/",       "잡학"),
-    ("https://www.boredpanda.com/people/",        "인물"),
-    ("https://www.boredpanda.com/science/",       "잡학"),
+    ("https://www.boredpanda.com/animals/",    "동물"),
+    ("https://www.boredpanda.com/funny/",      "반전"),
+    ("https://www.boredpanda.com/interesting/","잡학"),
+    ("https://www.boredpanda.com/people/",     "인물"),
 ]
+_BP_PER_SECTION = 8   # 4 × 8 = 32개 → AI 3배치 → 약 15초
 
 def _fetch_boredpanda_section(url, pre_cat):
     """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리)."""
     headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "en-US,en;q=0.9"}
     try:
-        r = req_lib.get(url, headers=headers, timeout=10)
+        r = req_lib.get(url, headers=headers, timeout=8)
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
         for article in soup.select("article"):
@@ -855,7 +852,7 @@ def _fetch_boredpanda_section(url, pre_cat):
             img_el = article.select_one("img")
             img_src = img_el.get("src", "") if img_el else ""
             results.append({
-                "title":     title_en,   # 영문 — 나중에 AI가 번역
+                "title":     title_en,
                 "url":       href,
                 "date":      "",
                 "recommend": pts,
@@ -863,7 +860,7 @@ def _fetch_boredpanda_section(url, pre_cat):
                 "source":    "BP",
                 "category":  pre_cat,
             })
-            if len(results) >= 20:
+            if len(results) >= _BP_PER_SECTION:
                 break
         return results
     except Exception:
@@ -887,8 +884,11 @@ async def _fetch_boredpanda():
 
 
 async def _fetch_boredpanda_classified():
-    """BP 크롤링 → AI 번역+채점 단일 호출로 처리."""
-    posts = await _fetch_boredpanda()
+    """BP 크롤링 → AI 번역+채점. 전체 25초 타임아웃."""
+    try:
+        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=15.0)
+    except asyncio.TimeoutError:
+        posts = []
     if not posts:
         return [], 0
 

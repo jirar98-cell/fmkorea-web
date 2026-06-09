@@ -63,6 +63,15 @@
     }
     .load-timer.done { color: #4ade80; }
 
+    /* ── Progress bar ── */
+    .load-progress-wrap {
+      width: 100%; height: 2px; background: #1a1a1a;
+    }
+    .load-progress-bar {
+      height: 100%; background: var(--accent);
+      transition: width 0.3s ease; width: 0%;
+    }
+
     /* ── Filter rows ── */
     .filter-row {
       display: flex; gap: 4px; padding: 6px 16px;
@@ -210,6 +219,10 @@
     <span class="src-chip waiting" id="chip-instiz">인스티즈 대기</span>
     <span class="src-chip waiting" id="chip-bp">BP 대기</span>
     <span class="load-timer" id="loadTimer">0.0초</span>
+  </div>
+  <!-- 진행률 바 -->
+  <div class="load-progress-wrap hidden" id="loadProgressWrap">
+    <div class="load-progress-bar" id="loadProgressBar"></div>
   </div>
 
   <!-- 카테고리 필터 -->
@@ -420,11 +433,12 @@ function makeCard(post) {
 
 /* ── 소스별 로딩 ── */
 const SOURCES = [
-  { key: 'ruli',   label: '루리웹',   chipId: 'chip-ruli',   est: 3  },
-  { key: 'theqoo', label: '더쿠',     chipId: 'chip-theqoo', est: 4  },
-  { key: 'instiz', label: '인스티즈', chipId: 'chip-instiz', est: 5  },
-  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 18 },
+  { key: 'ruli',   label: '루리웹',   chipId: 'chip-ruli',   est: 5  },
+  { key: 'theqoo', label: '더쿠',     chipId: 'chip-theqoo', est: 5  },
+  { key: 'instiz', label: '인스티즈', chipId: 'chip-instiz', est: 6  },
+  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 20 },
 ];
+const TOTAL_EST = Math.max(...SOURCES.map(s => s.est)); // 20초
 
 let _seenUrls = new Set();
 let _timerInterval = null;
@@ -440,25 +454,45 @@ function setChip(id, status, text) {
 }
 
 function updateTimer() {
-  const elapsed = ((Date.now() - _loadStart) / 1000).toFixed(1);
+  const elapsedSec = (Date.now() - _loadStart) / 1000;
+  const elapsed = elapsedSec.toFixed(1);
   const allDone = SOURCES.every(s => ['done', 'error'].includes(_srcStatus[s.key]));
   const doneCnt = SOURCES.filter(s => ['done', 'error'].includes(_srcStatus[s.key])).length;
   const total = document.querySelectorAll('.card').length;
   const timerEl = document.getElementById('loadTimer');
 
+  // 남은 시간 계산: 가장 오래 걸릴 소스 기준
+  const remaining = Math.max(0, TOTAL_EST - elapsedSec);
+  const remSec = Math.ceil(remaining);
+
   if (allDone) {
-    timerEl.textContent = `✓ 완료 ${elapsed}초 · ${total}개`;
+    timerEl.textContent = `✓ 완료 · ${elapsed}초 소요`;
     timerEl.classList.add('done');
+  } else if (remaining > 0) {
+    timerEl.textContent = `약 ${remSec}초 후 완료`;
+    timerEl.classList.remove('done');
   } else {
-    timerEl.textContent = `${elapsed}초 경과 · ${total}개`;
+    timerEl.textContent = `거의 완료...`;
     timerEl.classList.remove('done');
   }
 
-  // 중앙 스피너 서브텍스트 업데이트
+  // 진행률 바 업데이트
+  const pct = allDone ? 100 : Math.min(95, (elapsedSec / TOTAL_EST) * 100);
+  const bar = document.getElementById('loadProgressBar');
+  if (bar) bar.style.width = pct + '%';
+
+  // 중앙 스피너 텍스트 업데이트
   const sub = document.getElementById('loadSub');
   if (sub) {
-    sub.textContent = `${doneCnt}/${SOURCES.length} 소스 완료 · ${total}개 수집 · ${elapsed}초`;
+    if (allDone) {
+      sub.textContent = `완료 · ${total}개 수집 · ${elapsed}초 소요`;
+    } else if (remaining > 0) {
+      sub.textContent = `${doneCnt}/${SOURCES.length} 소스 완료 · ${total}개 수집 · 약 ${remSec}초 후 완료`;
+    } else {
+      sub.textContent = `${doneCnt}/${SOURCES.length} 소스 완료 · ${total}개 수집 · 거의 다 됐어요`;
+    }
   }
+
   // 스피너 아래 소스 도트 업데이트
   SOURCES.forEach(s => {
     const dot = document.getElementById(`dot-${s.key}`);
@@ -542,7 +576,13 @@ async function load(force = false) {
 
   _loadStart = Date.now();
   clearInterval(_timerInterval);
-  _timerInterval = setInterval(updateTimer, 100);
+  _timerInterval = setInterval(updateTimer, 200);
+
+  // 진행률 바 표시
+  const progressWrap = document.getElementById('loadProgressWrap');
+  const progressBar = document.getElementById('loadProgressBar');
+  if (progressWrap) { progressWrap.classList.remove('hidden'); }
+  if (progressBar) { progressBar.style.width = '0%'; }
 
   // 빈 그리드면 placeholder 표시
   if (!grid.querySelector('.card')) {
@@ -579,8 +619,14 @@ async function load(force = false) {
     btn.classList.remove('loading');
     _loading = false;
 
-    // 3초 후 로딩 바 숨기기
-    setTimeout(() => bar.classList.add('hidden'), 3000);
+    // 진행률 바 100% → 3초 후 숨기기
+    const progressBar2 = document.getElementById('loadProgressBar');
+    if (progressBar2) progressBar2.style.width = '100%';
+    setTimeout(() => {
+      bar.classList.add('hidden');
+      const pw = document.getElementById('loadProgressWrap');
+      if (pw) pw.classList.add('hidden');
+    }, 3000);
   }
 }
 
