@@ -306,8 +306,8 @@
     </div>
     <div class="score-filter">
       <label>최소 점수</label>
-      <input type="range" id="minScore" min="1" max="10" value="6" step="1" oninput="onScoreFilter(this.value)">
-      <span class="score-val" id="scoreVal">6+</span>
+      <input type="range" id="minScore" min="1" max="10" value="5" step="1" oninput="onScoreFilter(this.value)">
+      <span class="score-val" id="scoreVal">5+</span>
     </div>
   </div>
 </div>
@@ -532,7 +532,7 @@ const io = new IntersectionObserver(entries => {
 }, { rootMargin: '200px' });
 
 /* ── 필터 상태 — 태그 다중선택(OR 로직) ── */
-let _activeTags = new Set(), _activeSrc = '전체', _minScore = 6;
+let _activeTags = new Set(), _activeSrc = '전체', _minScore = 5;
 
 document.getElementById('cats').addEventListener('click', e => {
   const btn = e.target.closest('.f-btn');
@@ -671,7 +671,7 @@ const SOURCES = [
   { key: 'ruli',   label: '루리웹',   chipId: 'chip-ruli',   est: 5  },
   { key: 'theqoo', label: '더쿠',     chipId: 'chip-theqoo', est: 5  },
   { key: 'instiz', label: '인스티즈', chipId: 'chip-instiz', est: 6  },
-  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 45 },
+  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 90 },
 ];
 const TOTAL_EST = Math.max(...SOURCES.map(s => s.est));
 
@@ -732,9 +732,9 @@ async function fetchSource(srcObj, force) {
   _srcStatus[srcObj.key] = 'loading';
   setChip(srcObj.chipId, 'loading', `${srcObj.label} ↻`);
 
-  // 55초 프론트 타임아웃 (BP 45초 + 여유 10초)
+  // 110초 프론트 타임아웃 (BP 90초 + 여유 20초)
   const ctrl = new AbortController();
-  const abortTimer = setTimeout(() => ctrl.abort(), 55000);
+  const abortTimer = setTimeout(() => ctrl.abort(), 110000);
 
   try {
     const url = `/api/feed/source?src=${srcObj.key}${force ? '&refresh=1' : ''}`;

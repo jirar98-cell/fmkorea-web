@@ -63,7 +63,7 @@ FILTER_KEYWORDS = {
 _FILTER_PATTERNS = []
 
 SKIP_TITLES = ["전체 삭제", "공지", "규정", "금지", "차단", "신고", "불만글"]
-CACHE_TTL = 900
+CACHE_TTL = 1800  # 30분 — 깊은 스크래핑이 오래 걸리므로 캐시 유지
 
 # 필터 카테고리 메타데이터 (프론트에 노출)
 FILTER_CATEGORY_META = {
@@ -293,23 +293,28 @@ async def _scrape_page(browser, url, extra_filter=None):
 
 
 async def _ai_filter_posts(posts):
-    """AI로 게시물 채점. category + score(0~10) 필드 추가."""
+    """AI로 게시물 채점. 배치 3개 동시 실행으로 속도 3배 향상."""
     if not _sf_available or not posts:
         return posts, 0
 
     loop = asyncio.get_event_loop()
     BATCH = 20
+    CONCURRENT = 3  # 동시 Groq 호출 수
+    chunks = [posts[i:i+BATCH] for i in range(0, len(posts), BATCH)]
     all_results: list[dict] = []
 
-    for i in range(0, len(posts), BATCH):
-        chunk = posts[i:i + BATCH]
-        titles = [p["title"] for p in chunk]
+    for i in range(0, len(chunks), CONCURRENT):
+        group = chunks[i:i+CONCURRENT]
         try:
-            results = await loop.run_in_executor(None, lambda t=titles: _score_batch_fn(t))
+            group_res = await asyncio.gather(*[
+                loop.run_in_executor(None, lambda t=[p["title"] for p in c]: _score_batch_fn(t))
+                for c in group
+            ])
+            for r in group_res:
+                all_results.extend(r)
         except Exception:
-            # score=None → 키 미설정 → p.get("score",6)=6 → 필터 통과
-            results = [{"category": "기타", "score": None}] * len(chunk)
-        all_results.extend(results)
+            for c in group:
+                all_results.extend([{"tags": ["호기심"], "score": None}] * len(c))
 
     tagged = []
     for post, result in zip(posts, all_results):
@@ -616,72 +621,92 @@ def _html_cffi(url, referer="", timeout=10):
 
 
 def _fetch_ruliweb():
-    """루리웹 베스트 — curl_cffi 우선 (Railway Cloudflare 우회)."""
-    html = _html_cffi("https://bbs.ruliweb.com/best/board/300148", referer="https://bbs.ruliweb.com/")
-    if not html:
-        return []
-    soup = BeautifulSoup(html, "html.parser")
-    results, seen = [], set()
-    for row in soup.select("tr.table_body"):
-        divsn = row.select_one("td.divsn")
-        if divsn and "공지" in divsn.get_text():
-            continue
-        a = row.select_one("td.subject a.deco")
-        if not a:
-            continue
-        title = a.get_text(strip=True)
-        href  = a.get("href", "")
-        if not title or len(title) < 3 or title in seen:
-            continue
-        seen.add(title)
-        if is_filtered(title) or _NOTICE_PAT.search(title):
-            continue
-        rec_el  = row.select_one("td.recomd")
-        time_el = row.select_one("td.time")
-        results.append({
-            "title": title,
-            "url":   href if href.startswith("http") else "https://bbs.ruliweb.com" + href,
-            "date":  time_el.get_text(strip=True) if time_el else "",
-            "recommend": rec_el.get_text(strip=True) if rec_el else "",
-            "source": "루리웹",
-        })
-        if len(results) >= 60:
-            break
+    """루리웹 베스트 5페이지 병렬 스크래핑 — 최대 ~150개 수집."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _parse_page(page_num):
+        url = f"https://bbs.ruliweb.com/best/board/300148?page={page_num}"
+        html = _html_cffi(url, referer="https://bbs.ruliweb.com/", timeout=12)
+        items = []
+        if not html:
+            return items
+        soup = BeautifulSoup(html, "html.parser")
+        for row in soup.select("tr.table_body"):
+            divsn = row.select_one("td.divsn")
+            if divsn and "공지" in divsn.get_text():
+                continue
+            a = row.select_one("td.subject a.deco")
+            if not a:
+                continue
+            title = a.get_text(strip=True)
+            href  = a.get("href", "")
+            if not title or len(title) < 3:
+                continue
+            if is_filtered(title) or _NOTICE_PAT.search(title):
+                continue
+            rec_el  = row.select_one("td.recomd")
+            time_el = row.select_one("td.time")
+            items.append({
+                "title": title,
+                "url":   href if href.startswith("http") else "https://bbs.ruliweb.com" + href,
+                "date":  time_el.get_text(strip=True) if time_el else "",
+                "recommend": rec_el.get_text(strip=True) if rec_el else "",
+                "source": "루리웹",
+            })
+        return items
+
+    results, seen_urls, seen_titles = [], set(), set()
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for page_items in ex.map(_parse_page, range(1, 6)):
+            for item in page_items:
+                if item["url"] not in seen_urls and item["title"] not in seen_titles:
+                    seen_urls.add(item["url"])
+                    seen_titles.add(item["title"])
+                    results.append(item)
     return results
 
 
 def _fetch_theqoo():
-    """더쿠 hot — curl_cffi 우선 (Railway IP 차단 우회)."""
-    html = _html_cffi("https://theqoo.net/hot", referer="https://theqoo.net/")
-    if not html:
-        return []
-    soup = BeautifulSoup(html, "html.parser")
-    results, seen = [], set()
-    for td in soup.select("td.title"):
-        a = td.select_one("a")
-        if not a:
-            continue
-        href  = a.get("href", "")
-        title = a.get_text(strip=True)
-        if href.startswith("/event") or href.startswith("/ad"):
-            continue
-        if not title or len(title) < 3 or title in seen:
-            continue
-        if _NOTICE_PAT.search(title):
-            continue
-        seen.add(title)
-        if is_filtered(title):
-            continue
-        full_href = "https://theqoo.net" + href if href.startswith("/") else href
-        tr = td.parent
-        rec_el = tr.select_one(".m_no") if tr else None
-        results.append({
-            "title": title, "url": full_href, "date": "",
-            "recommend": rec_el.get_text(strip=True) if rec_el else "",
-            "source": "더쿠",
-        })
-        if len(results) >= 40:
-            break
+    """더쿠 hot 5페이지 병렬 스크래핑 — 최대 ~200개 수집."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _parse_page(page_num):
+        url = f"https://theqoo.net/hot?page={page_num}"
+        html = _html_cffi(url, referer="https://theqoo.net/", timeout=12)
+        items = []
+        if not html:
+            return items
+        soup = BeautifulSoup(html, "html.parser")
+        for td in soup.select("td.title"):
+            a = td.select_one("a")
+            if not a:
+                continue
+            href  = a.get("href", "")
+            title = a.get_text(strip=True)
+            if href.startswith("/event") or href.startswith("/ad"):
+                continue
+            if not title or len(title) < 3:
+                continue
+            if _NOTICE_PAT.search(title) or is_filtered(title):
+                continue
+            full_href = "https://theqoo.net" + href if href.startswith("/") else href
+            tr = td.parent
+            rec_el = tr.select_one(".m_no") if tr else None
+            items.append({
+                "title": title, "url": full_href, "date": "",
+                "recommend": rec_el.get_text(strip=True) if rec_el else "",
+                "source": "더쿠",
+            })
+        return items
+
+    results, seen_urls, seen_titles = [], set(), set()
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for page_items in ex.map(_parse_page, range(1, 6)):
+            for item in page_items:
+                if item["url"] not in seen_urls and item["title"] not in seen_titles:
+                    seen_urls.add(item["url"])
+                    seen_titles.add(item["title"])
+                    results.append(item)
     return results
 
 
@@ -700,32 +725,46 @@ async def _fetch_theqoo_classified():
 
 
 def _fetch_instiz():
-    """인스티즈 실시간 인기글 — curl_cffi 우선 (Railway IP 차단 우회)."""
-    html = _html_cffi("https://www.instiz.net/pt", referer="https://www.instiz.net/")
-    if not html:
-        return []
-    soup = BeautifulSoup(html, "html.parser")
-    results, seen = [], set()
-    # 셀렉터 후보: a.listsubject (구) / a[href*='/pt/'] (신)
-    anchors = soup.select("a.listsubject") or soup.select("table.board_list a[href*='/pt/']")
-    for a in anchors:
-        title = a.get_text(strip=True)
-        href  = a.get("href", "")
-        if not title or len(title) < 3 or title in seen:
-            continue
-        if _NOTICE_PAT.search(title) or is_filtered(title):
-            continue
-        seen.add(title)
-        full_href = "https://www.instiz.net" + href if href.startswith("/") else href
-        tr = a.find_parent("tr")
-        rec_el = tr.select_one(".recom") if tr else None
-        rec = rec_el.get_text(strip=True) if rec_el else ""
-        results.append({
-            "title": title, "url": full_href,
-            "date": "", "recommend": rec, "source": "인스티즈",
-        })
-        if len(results) >= 40:
-            break
+    """인스티즈 인기글 5페이지 — curl_cffi, 복수 셀렉터 시도."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _parse_page(page_num):
+        url = f"https://www.instiz.net/pt?page={page_num}"
+        html = _html_cffi(url, referer="https://www.instiz.net/", timeout=12)
+        items = []
+        if not html:
+            return items
+        soup = BeautifulSoup(html, "html.parser")
+        # 셀렉터 우선순위: 인스티즈는 버전별로 다름
+        anchors = (soup.select("a.listsubject")
+                   or soup.select(".list_wrap a[href*='/pt/']")
+                   or soup.select("table a[href*='instiz.net/pt/']")
+                   or soup.select(".memo_list a"))
+        for a in anchors:
+            title = a.get_text(strip=True)
+            href  = a.get("href", "")
+            if not title or len(title) < 3:
+                continue
+            if _NOTICE_PAT.search(title) or is_filtered(title):
+                continue
+            full_href = "https://www.instiz.net" + href if href.startswith("/") else href
+            tr = a.find_parent("tr") or a.find_parent("li")
+            rec_el = tr.select_one(".recom, .count, .up") if tr else None
+            rec = rec_el.get_text(strip=True) if rec_el else ""
+            items.append({
+                "title": title, "url": full_href,
+                "date": "", "recommend": rec, "source": "인스티즈",
+            })
+        return items
+
+    results, seen_urls, seen_titles = [], set(), set()
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for page_items in ex.map(_parse_page, range(1, 6)):
+            for item in page_items:
+                if item["url"] not in seen_urls and item["title"] not in seen_titles:
+                    seen_urls.add(item["url"])
+                    seen_titles.add(item["title"])
+                    results.append(item)
     return results
 
 
@@ -839,7 +878,7 @@ def _parse_rec(rec_str) -> int:
         return 0
 
 
-# BoredPanda 섹션 — 6개 섹션 × 10개
+# BoredPanda 섹션 — 8개 섹션 × 20개 = 160개 (AI 병렬 처리로 속도 확보)
 _BP_SECTIONS = [
     ("https://www.boredpanda.com/animals/",    "동물"),
     ("https://www.boredpanda.com/funny/",      "반전"),
@@ -847,8 +886,10 @@ _BP_SECTIONS = [
     ("https://www.boredpanda.com/people/",     "인물"),
     ("https://www.boredpanda.com/life/",       "잡학"),
     ("https://www.boredpanda.com/arts/",       "인물"),
+    ("https://www.boredpanda.com/nature/",     "동물"),
+    ("https://www.boredpanda.com/wholesome/",  "감동"),
 ]
-_BP_PER_SECTION = 10  # 6 × 10 = 60개 → AI 5배치 → 45초 타임아웃 내 처리
+_BP_PER_SECTION = 20  # 8 × 20 = 160개 → AI 전배치 동시 실행 → ~15초
 
 def _fetch_boredpanda_section(url, pre_cat):
     """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리)."""
@@ -903,16 +944,16 @@ async def _fetch_boredpanda():
 
 
 async def _fetch_boredpanda_classified():
-    """BP 크롤링 → AI 번역+채점. 전체 45초 하드 타임아웃."""
+    """BP 크롤링 → AI 번역+채점. 전체 90초 하드 타임아웃."""
     try:
-        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=45.0)
+        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=90.0)
     except asyncio.TimeoutError:
         return [], 0
 
 
 async def _bp_fetch_and_score():
     try:
-        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=12.0)
+        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=20.0)
     except asyncio.TimeoutError:
         posts = []
     if not posts:
@@ -924,15 +965,19 @@ async def _bp_fetch_and_score():
     loop = asyncio.get_event_loop()
     BATCH = 15
     titles_en = [p["title"] for p in posts]
-    all_results: list[dict] = []
+    chunks = [titles_en[i:i+BATCH] for i in range(0, len(titles_en), BATCH)]
 
-    for i in range(0, len(titles_en), BATCH):
-        chunk = titles_en[i:i + BATCH]
-        try:
-            res = await loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
-        except Exception:
-            res = [{"title_ko": t, "category": "기타", "score": None} for t in chunk]
-        all_results.extend(res)
+    # 모든 AI 배치 동시 실행 (순차→병렬, 5배치 → ~8초)
+    try:
+        results_list = await asyncio.gather(*[
+            loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
+            for chunk in chunks
+        ])
+        all_results = []
+        for r in results_list:
+            all_results.extend(r)
+    except Exception:
+        all_results = [{"title_ko": t, "tags": ["호기심"], "score": None} for t in titles_en]
 
     tagged = []
     for post, result in zip(posts, all_results):
@@ -1017,9 +1062,9 @@ def api_feed():
         instiz_posts,  _, instiz_filtered  = get_cached("instiz",  force=force, async_fn=_fetch_instiz_classified)
         combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts
         # 채널 DNA 점수 6 미만 제외 (점수 없으면 통과)
-        combined = [p for p in combined if p.get("score", 6) >= 6]
+        combined = [p for p in combined if p.get("score", 5) >= 5]
         # 낮은 반응 제외 (수치 없으면 통과)
-        combined = [p for p in combined if _parse_rec(p.get("recommend", 0)) >= 5 or not p.get("recommend")]
+        combined = [p for p in combined if _parse_rec(p.get("recommend", 0)) >= 3 or not p.get("recommend")]
         # URL 중복 제거
         seen_urls, deduped = set(), []
         for p in combined:
@@ -1055,8 +1100,8 @@ def api_feed_source():
     key, async_fn, label = _SOURCE_MAP[src]
     try:
         posts, fetched_at, filtered = get_cached(key, force=force, async_fn=async_fn)
-        posts = [p for p in posts if p.get("score", 6) >= 6]
-        posts = [p for p in posts if _parse_rec(p.get("recommend", 0)) >= 5 or not p.get("recommend")]
+        posts = [p for p in posts if p.get("score", 5) >= 5]
+        posts = [p for p in posts if _parse_rec(p.get("recommend", 0)) >= 3 or not p.get("recommend")]
         return jsonify({"src": src, "label": label, "posts": posts,
                         "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
