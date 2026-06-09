@@ -485,7 +485,7 @@ function clearAllLikes() {
 
 /* ── 썸네일 큐 ── */
 let _running = 0;
-const MAX = 3, _queue = [];
+const MAX = 6, _queue = [];
 function _drain() {
   while (_running < MAX && _queue.length > 0) {
     const { card, resolve } = _queue.shift();
@@ -635,7 +635,7 @@ const SOURCES = [
   { key: 'ruli',   label: '루리웹',   chipId: 'chip-ruli',   est: 5  },
   { key: 'theqoo', label: '더쿠',     chipId: 'chip-theqoo', est: 5  },
   { key: 'instiz', label: '인스티즈', chipId: 'chip-instiz', est: 6  },
-  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 28 },
+  { key: 'bp',     label: 'BP',       chipId: 'chip-bp',     est: 45 },
 ];
 const TOTAL_EST = Math.max(...SOURCES.map(s => s.est));
 
@@ -696,9 +696,9 @@ async function fetchSource(srcObj, force) {
   _srcStatus[srcObj.key] = 'loading';
   setChip(srcObj.chipId, 'loading', `${srcObj.label} ↻`);
 
-  // 30초 프론트 타임아웃 (AbortController)
+  // 55초 프론트 타임아웃 (BP 45초 + 여유 10초)
   const ctrl = new AbortController();
-  const abortTimer = setTimeout(() => ctrl.abort(), 30000);
+  const abortTimer = setTimeout(() => ctrl.abort(), 55000);
 
   try {
     const url = `/api/feed/source?src=${srcObj.key}${force ? '&refresh=1' : ''}`;

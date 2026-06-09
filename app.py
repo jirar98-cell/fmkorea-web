@@ -585,85 +585,96 @@ _NOTICE_PAT = re.compile(r'^\[공지\]|^공지|^📢|^◤|체험단|이벤트 �
 _CRAWL_UA   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 
-def _fetch_ruliweb():
-    """루리웹 베스트 게시판 크롤링 (requests 기반)."""
-    boards = [
-        ("https://bbs.ruliweb.com/best/board/300148", "루리웹"),  # 유머
-    ]
-    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://bbs.ruliweb.com/"}
-    results, seen = [], set()
-    for url, src in boards:
+def _html_cffi(url, referer="", timeout=10):
+    """curl_cffi Chrome 핑거프린트로 HTML 취득. requests fallback. Railway IP 차단 우회."""
+    extra = {"Accept-Language": "ko-KR,ko;q=0.9"}
+    if referer:
+        extra["Referer"] = referer
+    session = _get_cffi_session()
+    if session:
         try:
-            r = req_lib.get(url, headers=headers, timeout=8)
-            r.encoding = r.apparent_encoding
-            soup = BeautifulSoup(r.text, "html.parser")
-            for row in soup.select("tr.table_body"):
-                divsn = row.select_one("td.divsn")
-                if divsn and "공지" in divsn.get_text():
-                    continue
-                a = row.select_one("td.subject a.deco")
-                if not a:
-                    continue
-                title = a.get_text(strip=True)
-                href  = a.get("href", "")
-                if not title or len(title) < 3 or title in seen:
-                    continue
-                seen.add(title)
-                if is_filtered(title) or _NOTICE_PAT.search(title):
-                    continue
-                rec_el = row.select_one("td.recomd")
-                time_el = row.select_one("td.time")
-                results.append({
-                    "title": title,
-                    "url":   href if href.startswith("http") else "https://bbs.ruliweb.com" + href,
-                    "date":  time_el.get_text(strip=True) if time_el else "",
-                    "recommend": rec_el.get_text(strip=True) if rec_el else "",
-                    "source": src,
-                })
-                if len(results) >= 60:
-                    break
+            r = session.get(url, headers=extra, timeout=timeout)
+            if r.status_code == 200:
+                return r.text
         except Exception:
+            pass
+    try:
+        r = req_lib.get(url, headers={"User-Agent": _CRAWL_UA, **extra}, timeout=timeout)
+        r.encoding = r.apparent_encoding
+        if r.status_code == 200:
+            return r.text
+    except Exception:
+        pass
+    return ""
+
+
+def _fetch_ruliweb():
+    """루리웹 베스트 — curl_cffi 우선 (Railway Cloudflare 우회)."""
+    html = _html_cffi("https://bbs.ruliweb.com/best/board/300148", referer="https://bbs.ruliweb.com/")
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    results, seen = [], set()
+    for row in soup.select("tr.table_body"):
+        divsn = row.select_one("td.divsn")
+        if divsn and "공지" in divsn.get_text():
             continue
+        a = row.select_one("td.subject a.deco")
+        if not a:
+            continue
+        title = a.get_text(strip=True)
+        href  = a.get("href", "")
+        if not title or len(title) < 3 or title in seen:
+            continue
+        seen.add(title)
+        if is_filtered(title) or _NOTICE_PAT.search(title):
+            continue
+        rec_el  = row.select_one("td.recomd")
+        time_el = row.select_one("td.time")
+        results.append({
+            "title": title,
+            "url":   href if href.startswith("http") else "https://bbs.ruliweb.com" + href,
+            "date":  time_el.get_text(strip=True) if time_el else "",
+            "recommend": rec_el.get_text(strip=True) if rec_el else "",
+            "source": "루리웹",
+        })
+        if len(results) >= 60:
+            break
     return results
 
 
 def _fetch_theqoo():
-    """더쿠 hot 크롤링 (requests 기반)."""
-    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://theqoo.net/"}
+    """더쿠 hot — curl_cffi 우선 (Railway IP 차단 우회)."""
+    html = _html_cffi("https://theqoo.net/hot", referer="https://theqoo.net/")
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
-    try:
-        r = req_lib.get("https://theqoo.net/hot", headers=headers, timeout=8)
-        r.encoding = r.apparent_encoding
-        soup = BeautifulSoup(r.text, "html.parser")
-        for td in soup.select("td.title"):
-            a = td.select_one("a")
-            if not a:
-                continue
-            href  = a.get("href", "")
-            title = a.get_text(strip=True)
-            if href.startswith("/event") or href.startswith("/ad"):
-                continue
-            if not title or len(title) < 3 or title in seen:
-                continue
-            if _NOTICE_PAT.search(title):
-                continue
-            seen.add(title)
-            if is_filtered(title):
-                continue
-            full_href = "https://theqoo.net" + href if href.startswith("/") else href
-            tr = td.parent
-            rec_el = tr.select_one(".m_no") if tr else None
-            results.append({
-                "title": title,
-                "url":   full_href,
-                "date":  "",
-                "recommend": rec_el.get_text(strip=True) if rec_el else "",
-                "source": "더쿠",
-            })
-            if len(results) >= 40:
-                break
-    except Exception:
-        pass
+    for td in soup.select("td.title"):
+        a = td.select_one("a")
+        if not a:
+            continue
+        href  = a.get("href", "")
+        title = a.get_text(strip=True)
+        if href.startswith("/event") or href.startswith("/ad"):
+            continue
+        if not title or len(title) < 3 or title in seen:
+            continue
+        if _NOTICE_PAT.search(title):
+            continue
+        seen.add(title)
+        if is_filtered(title):
+            continue
+        full_href = "https://theqoo.net" + href if href.startswith("/") else href
+        tr = td.parent
+        rec_el = tr.select_one(".m_no") if tr else None
+        results.append({
+            "title": title, "url": full_href, "date": "",
+            "recommend": rec_el.get_text(strip=True) if rec_el else "",
+            "source": "더쿠",
+        })
+        if len(results) >= 40:
+            break
     return results
 
 
@@ -682,33 +693,32 @@ async def _fetch_theqoo_classified():
 
 
 def _fetch_instiz():
-    """인스티즈 실시간 인기글 크롤링."""
-    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "ko-KR,ko;q=0.9", "Referer": "https://www.instiz.net/"}
+    """인스티즈 실시간 인기글 — curl_cffi 우선 (Railway IP 차단 우회)."""
+    html = _html_cffi("https://www.instiz.net/pt", referer="https://www.instiz.net/")
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
     results, seen = [], set()
-    try:
-        r = req_lib.get("https://www.instiz.net/pt", headers=headers, timeout=8)
-        r.encoding = "utf-8"
-        soup = BeautifulSoup(r.text, "html.parser")
-        for a in soup.select("a.listsubject"):
-            title = a.get_text(strip=True)
-            href  = a.get("href", "")
-            if not title or len(title) < 3 or title in seen:
-                continue
-            if _NOTICE_PAT.search(title) or is_filtered(title):
-                continue
-            seen.add(title)
-            full_href = "https://www.instiz.net" + href if href.startswith("/") else href
-            tr = a.find_parent("tr")
-            rec_el = tr.select_one(".recom") if tr else None
-            rec = rec_el.get_text(strip=True) if rec_el else ""
-            results.append({
-                "title": title, "url": full_href,
-                "date": "", "recommend": rec, "source": "인스티즈",
-            })
-            if len(results) >= 40:
-                break
-    except Exception:
-        pass
+    # 셀렉터 후보: a.listsubject (구) / a[href*='/pt/'] (신)
+    anchors = soup.select("a.listsubject") or soup.select("table.board_list a[href*='/pt/']")
+    for a in anchors:
+        title = a.get_text(strip=True)
+        href  = a.get("href", "")
+        if not title or len(title) < 3 or title in seen:
+            continue
+        if _NOTICE_PAT.search(title) or is_filtered(title):
+            continue
+        seen.add(title)
+        full_href = "https://www.instiz.net" + href if href.startswith("/") else href
+        tr = a.find_parent("tr")
+        rec_el = tr.select_one(".recom") if tr else None
+        rec = rec_el.get_text(strip=True) if rec_el else ""
+        results.append({
+            "title": title, "url": full_href,
+            "date": "", "recommend": rec, "source": "인스티즈",
+        })
+        if len(results) >= 40:
+            break
     return results
 
 
@@ -822,14 +832,16 @@ def _parse_rec(rec_str) -> int:
         return 0
 
 
-# BoredPanda 섹션 — 4개로 압축 (속도 최우선)
+# BoredPanda 섹션 — 6개 섹션 × 10개
 _BP_SECTIONS = [
     ("https://www.boredpanda.com/animals/",    "동물"),
     ("https://www.boredpanda.com/funny/",      "반전"),
     ("https://www.boredpanda.com/interesting/","잡학"),
     ("https://www.boredpanda.com/people/",     "인물"),
+    ("https://www.boredpanda.com/life/",       "잡학"),
+    ("https://www.boredpanda.com/arts/",       "인물"),
 ]
-_BP_PER_SECTION = 8   # 4 × 8 = 32개 → AI 3배치 → 약 15초
+_BP_PER_SECTION = 10  # 6 × 10 = 60개 → AI 5배치 → 45초 타임아웃 내 처리
 
 def _fetch_boredpanda_section(url, pre_cat):
     """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리)."""
@@ -884,9 +896,9 @@ async def _fetch_boredpanda():
 
 
 async def _fetch_boredpanda_classified():
-    """BP 크롤링 → AI 번역+채점. 전체 28초 하드 타임아웃."""
+    """BP 크롤링 → AI 번역+채점. 전체 45초 하드 타임아웃."""
     try:
-        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=28.0)
+        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=45.0)
     except asyncio.TimeoutError:
         return [], 0
 
@@ -1203,17 +1215,20 @@ def api_thumb():
     return jsonify({"img": _fetch_thumb_simple(url)})
 
 
-_img_cache: dict[str, bytes] = {}
+_img_cache: dict[str, tuple[bytes, str]] = {}  # url → (data, mimetype)
 
 @app.route("/api/img")
 def api_img():
-    """이미지 프록시 — 원본 URL을 받아 480px JPEG 65%로 압축해 반환."""
+    """이미지 프록시 — 380px WebP 50% (JPEG fallback). 브라우저 캐시 1일."""
     from flask import Response
     url = request.args.get("url", "")
     if not url or not url.startswith("http"):
         return "", 404
     if url in _img_cache:
-        return Response(_img_cache[url], mimetype="image/jpeg")
+        data, mime = _img_cache[url]
+        resp = Response(data, mimetype=mime)
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
     try:
         from PIL import Image
         import io as _io
@@ -1224,15 +1239,23 @@ def api_img():
         r.raise_for_status()
         img = Image.open(_io.BytesIO(r.content)).convert("RGB")
         w, h = img.size
-        max_w = 480
+        max_w = 380
         if w > max_w:
             img = img.resize((max_w, int(h * max_w / w)), Image.LANCZOS)
         buf = _io.BytesIO()
-        img.save(buf, "JPEG", quality=65, optimize=True)
+        try:
+            img.save(buf, "WEBP", quality=50, method=4)
+            mime = "image/webp"
+        except Exception:
+            buf = _io.BytesIO()
+            img.save(buf, "JPEG", quality=55, optimize=True)
+            mime = "image/jpeg"
         data = buf.getvalue()
-        if len(_img_cache) < 300:
-            _img_cache[url] = data
-        return Response(data, mimetype="image/jpeg")
+        if len(_img_cache) < 400:
+            _img_cache[url] = (data, mime)
+        resp = Response(data, mimetype=mime)
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
     except Exception:
         return "", 404
 
@@ -1309,6 +1332,8 @@ def _prewarm():
         try:
             result = fn()
             posts, filtered = result if isinstance(result, tuple) else (result, 0)
+            if not posts:  # 빈 결과는 캐시하지 않음 — 900초 동안 0개 반환 방지
+                continue
             with _lock:
                 _cache[key] = {
                     "posts": posts,

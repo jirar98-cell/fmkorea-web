@@ -7,8 +7,12 @@
       "Skill(update-config:*)",
       "WebFetch(domain:fmkorea-web-production.up.railway.app)",
       "Bash(railway logs *)",
-      "WebFetch(domain:www.youtube.com)"
+      "WebFetch(domain:www.youtube.com)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alsdn\\\\OneDrive\\\\바탕 화면\\\\fmkorea_web\\\\.claude\\\\commands\")"
     ],
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "bypassPermissions",
+    "additionalDirectories": [
+      "C:\\Users\\alsdn\\OneDrive\\바탕 화면\\fmkorea_web\\.claude"
+    ]
   }
 }
