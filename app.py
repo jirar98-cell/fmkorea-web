@@ -1281,8 +1281,8 @@ def api_feed():
         theqoo_posts,   _, theqoo_filtered   = get_cached("theqoo",   force=force, async_fn=_fetch_theqoo_classified)
         instiz_posts,   _, instiz_filtered   = get_cached("instiz",   force=force, async_fn=_fetch_instiz_classified)
         dogdrip_posts,  _, dogdrip_filtered  = get_cached("dogdrip",  force=force, async_fn=_fetch_dogdrip_classified)
-        reddit_posts,   _, reddit_filtered   = get_cached("reddit",   force=force, async_fn=_fetch_reddit_classified)
-        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts + dogdrip_posts + reddit_posts
+        # 레딧: Railway 데이터센터 IP 차단(403)으로 0개 → 피드에서 제외. /api/feed/source?src=reddit 로는 접근 가능
+        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts + dogdrip_posts
         # 채널 DNA 점수 4 미만 제외 (점수 없으면 통과)
         combined = [p for p in combined if p.get("score", 5) >= 4]
         # 낮은 반응 제외 (수치 없으면 통과)
@@ -1302,7 +1302,7 @@ def api_feed():
                 base -= 6
             return base
         deduped.sort(key=_sort_key, reverse=True)
-        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered + dogdrip_filtered + reddit_filtered
+        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered + dogdrip_filtered
         return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1749,7 +1749,6 @@ def _prewarm():
         ("humor",    lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
         ("ruli",     lambda: _run_async(_fetch_ruliweb_classified())),
         ("bp",       lambda: _run_async(_fetch_boredpanda_classified())),
-        ("reddit",   lambda: _run_async(_fetch_reddit_classified())),
         ("theqoo",   lambda: _run_async(_fetch_theqoo_classified())),
         ("instiz",   lambda: _run_async(_fetch_instiz_classified())),
         ("dogdrip",  lambda: _run_async(_fetch_dogdrip_classified())),
