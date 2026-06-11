@@ -1190,11 +1190,15 @@ def api_feed():
             if p["url"] not in seen_urls:
                 seen_urls.add(p["url"])
                 deduped.append(p)
-        # 점수(×2) + log(반응수) 기반 정렬
-        deduped.sort(
-            key=lambda p: p.get("score", 5) * 2 + math.log10(_parse_rec(p.get("recommend", 0)) + 10),
-            reverse=True,
-        )
+        # 점수(×2) + log(반응수) 기반 정렬 — 미번역 영문 제목은 강등 (한글 소재 우선)
+        def _sort_key(p):
+            base = p.get("score", 5) * 2 + math.log10(_parse_rec(p.get("recommend", 0)) + 10)
+            title = p.get("title", "")
+            ascii_ratio = sum(c.isascii() for c in title) / max(len(title), 1)
+            if ascii_ratio > 0.7:  # 70%+ 영문 = 번역 실패분 → 후순위
+                base -= 6
+            return base
+        deduped.sort(key=_sort_key, reverse=True)
         total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered + dogdrip_filtered
         return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
