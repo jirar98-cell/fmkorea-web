@@ -86,6 +86,50 @@
     .score-filter input[type=range] { flex: 1; accent-color: var(--accent); }
     .score-val { font-size: 11px; color: var(--text); font-weight: 700; min-width: 28px; }
 
+    /* ── Tag dropdown filter ── */
+    .filter-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px 4px; }
+    .tag-dropdown { position: relative; }
+    .tag-dd-trigger {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 14px; border-radius: 9px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: all 0.12s; max-width: min(420px, calc(100vw - 120px));
+    }
+    .tag-dd-trigger:hover { border-color: #555; }
+    .tag-dd-trigger.has-active { border-color: var(--accent); }
+    .tag-dd-trigger #tagDdLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tag-dd-count {
+      font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px;
+      background: var(--accent); color: #fff; flex-shrink: 0;
+    }
+    .tag-dd-count:empty { display: none; }
+    .tag-dd-arrow { font-size: 10px; color: var(--muted); transition: transform 0.15s; margin-left: auto; flex-shrink: 0; }
+    .tag-dropdown.open .tag-dd-arrow { transform: rotate(180deg); }
+    .tag-dd-clear {
+      font-size: 12px; color: var(--muted); background: none; border: none;
+      cursor: pointer; padding: 4px 6px; display: none;
+    }
+    .tag-dd-clear:hover { color: #f87171; }
+    .tag-dd-trigger.has-active ~ .tag-dd-clear { display: inline; }
+    .tag-dd-panel {
+      position: absolute; top: calc(100% + 6px); left: 0; z-index: 50;
+      display: none; flex-wrap: wrap; gap: 7px;
+      width: min(540px, calc(100vw - 32px));
+      padding: 14px; border-radius: 12px;
+      background: #141414; border: 1px solid var(--border);
+      box-shadow: 0 14px 44px rgba(0,0,0,0.65);
+    }
+    .tag-dropdown.open .tag-dd-panel { display: flex; }
+    .tag-chip {
+      padding: 5px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--muted); cursor: pointer; transition: all 0.1s; white-space: nowrap;
+    }
+    .tag-chip:hover { border-color: #666; color: var(--text); }
+    .tag-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tag-chip[data-cat="전체"] { font-weight: 700; }
+
     /* ── Grid ── */
     .grid { columns: 4 220px; column-gap: 10px; padding: 12px 16px 40px; }
     @media (max-width: 540px) { .grid { columns: 2 140px; column-gap: 8px; padding: 10px 10px 30px; } }
@@ -374,32 +418,42 @@
 
   <!-- 피드 필터 (학습소에서 숨김) -->
   <div class="feed-filters" id="feedFilters">
-    <div class="filter-row" id="cats">
-      <button class="f-btn active" data-cat="전체">전체</button>
-      <button class="f-btn" data-cat="반전">🔄 반전</button>
-      <button class="f-btn" data-cat="의외">😮 의외</button>
-      <button class="f-btn" data-cat="충격">😱 충격</button>
-      <button class="f-btn" data-cat="레전드">🏆 레전드</button>
-      <button class="f-btn" data-cat="동물">🐾 동물</button>
-      <button class="f-btn" data-cat="고양이">🐱 고양이</button>
-      <button class="f-btn" data-cat="강아지">🐶 강아지</button>
-      <button class="f-btn" data-cat="야생">🦁 야생</button>
-      <button class="f-btn" data-cat="잡학">🤔 잡학</button>
-      <button class="f-btn" data-cat="역사">📜 역사</button>
-      <button class="f-btn" data-cat="과학">🔬 과학</button>
-      <button class="f-btn" data-cat="세계">🌍 세계</button>
-      <button class="f-btn" data-cat="감동">🥹 감동</button>
-      <button class="f-btn" data-cat="훈훈">☀️ 훈훈</button>
-      <button class="f-btn" data-cat="공감">💬 공감</button>
-      <button class="f-btn" data-cat="힐링">🌿 힐링</button>
-      <button class="f-btn" data-cat="유머">😂 유머</button>
-      <button class="f-btn" data-cat="황당">🤯 황당</button>
-      <button class="f-btn" data-cat="인물">👤 인물</button>
-      <button class="f-btn" data-cat="직장">💼 직장</button>
-      <button class="f-btn" data-cat="연애">💕 연애</button>
-      <button class="f-btn" data-cat="육아">👶 육아</button>
-      <button class="f-btn" data-cat="음식">🍜 음식</button>
-      <button class="f-btn" data-cat="여행">✈️ 여행</button>
+    <div class="filter-toolbar">
+      <div class="tag-dropdown" id="tagDropdown">
+        <button class="tag-dd-trigger" id="tagDdTrigger" type="button">
+          <span id="tagDdLabel">🏷️ 전체 분류</span>
+          <span class="tag-dd-count" id="tagDdCount"></span>
+          <span class="tag-dd-arrow">▾</span>
+        </button>
+        <button class="tag-dd-clear" id="tagDdClear" type="button" title="선택 해제">✕ 초기화</button>
+        <div class="tag-dd-panel" id="cats">
+          <button class="tag-chip active" data-cat="전체">전체</button>
+          <button class="tag-chip" data-cat="반전">🔄 반전</button>
+          <button class="tag-chip" data-cat="의외">😮 의외</button>
+          <button class="tag-chip" data-cat="충격">😱 충격</button>
+          <button class="tag-chip" data-cat="레전드">🏆 레전드</button>
+          <button class="tag-chip" data-cat="동물">🐾 동물</button>
+          <button class="tag-chip" data-cat="고양이">🐱 고양이</button>
+          <button class="tag-chip" data-cat="강아지">🐶 강아지</button>
+          <button class="tag-chip" data-cat="야생">🦁 야생</button>
+          <button class="tag-chip" data-cat="잡학">🤔 잡학</button>
+          <button class="tag-chip" data-cat="역사">📜 역사</button>
+          <button class="tag-chip" data-cat="과학">🔬 과학</button>
+          <button class="tag-chip" data-cat="세계">🌍 세계</button>
+          <button class="tag-chip" data-cat="감동">🥹 감동</button>
+          <button class="tag-chip" data-cat="훈훈">☀️ 훈훈</button>
+          <button class="tag-chip" data-cat="공감">💬 공감</button>
+          <button class="tag-chip" data-cat="힐링">🌿 힐링</button>
+          <button class="tag-chip" data-cat="유머">😂 유머</button>
+          <button class="tag-chip" data-cat="황당">🤯 황당</button>
+          <button class="tag-chip" data-cat="인물">👤 인물</button>
+          <button class="tag-chip" data-cat="직장">💼 직장</button>
+          <button class="tag-chip" data-cat="연애">💕 연애</button>
+          <button class="tag-chip" data-cat="육아">👶 육아</button>
+          <button class="tag-chip" data-cat="음식">🍜 음식</button>
+          <button class="tag-chip" data-cat="여행">✈️ 여행</button>
+        </div>
+      </div>
     </div>
     <div class="score-filter">
       <label>최소 점수</label>
@@ -655,16 +709,50 @@ const io = new IntersectionObserver(entries => {
 /* ── 필터 상태 — 태그 다중선택(OR 로직) ── */
 let _activeTags = new Set(), _activeSrc = '전체', _minScore = 5;
 
+/* ── 태그 드롭다운 ── */
+const _tagDropdown = document.getElementById('tagDropdown');
+const _tagDdTrigger = document.getElementById('tagDdTrigger');
+_tagDdTrigger.addEventListener('click', e => {
+  e.stopPropagation();
+  _tagDropdown.classList.toggle('open');
+});
+document.addEventListener('click', e => {
+  if (!_tagDropdown.contains(e.target)) _tagDropdown.classList.remove('open');
+});
+document.getElementById('tagDdClear').addEventListener('click', e => {
+  e.stopPropagation();
+  _activeTags.clear();
+  document.querySelectorAll('#cats .tag-chip').forEach(b => b.classList.remove('active'));
+  document.querySelector('#cats .tag-chip[data-cat="전체"]').classList.add('active');
+  _updateTagLabel();
+  filterCards();
+});
+function _updateTagLabel() {
+  const label = document.getElementById('tagDdLabel');
+  const count = document.getElementById('tagDdCount');
+  const n = _activeTags.size;
+  if (n === 0) {
+    label.textContent = '🏷️ 전체 분류';
+    count.textContent = '';
+    _tagDdTrigger.classList.remove('has-active');
+  } else {
+    const arr = [..._activeTags];
+    label.textContent = '🏷️ ' + (n <= 2 ? arr.join(', ') : `${arr[0]} 외 ${n - 1}`);
+    count.textContent = n;
+    _tagDdTrigger.classList.add('has-active');
+  }
+}
+
 document.getElementById('cats').addEventListener('click', e => {
-  const btn = e.target.closest('.f-btn');
+  const btn = e.target.closest('.tag-chip');
   if (!btn) return;
   const cat = btn.dataset.cat;
   if (cat === '전체') {
     _activeTags.clear();
-    document.querySelectorAll('#cats .f-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#cats .tag-chip').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   } else {
-    document.querySelector('#cats .f-btn[data-cat="전체"]').classList.remove('active');
+    document.querySelector('#cats .tag-chip[data-cat="전체"]').classList.remove('active');
     if (_activeTags.has(cat)) {
       _activeTags.delete(cat);
       btn.classList.remove('active');
@@ -673,8 +761,9 @@ document.getElementById('cats').addEventListener('click', e => {
       btn.classList.add('active');
     }
     if (_activeTags.size === 0)
-      document.querySelector('#cats .f-btn[data-cat="전체"]').classList.add('active');
+      document.querySelector('#cats .tag-chip[data-cat="전체"]').classList.add('active');
   }
+  _updateTagLabel();
   filterCards();
 });
 function onScoreFilter(v) {

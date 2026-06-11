@@ -3,61 +3,84 @@
 > 새 세션 시작 시 이 파일 먼저 읽을 것.
 > "가자시발" = 바로 작업 시작. 인사 없이 현황 브리핑 후 다음 할 일 착수.
 
-## 마지막 세션: 2026-06-11
+## 마지막 세션: 2026-06-12 (밤, BP 대수술)
+
+### 이번 세션 핵심 — BP가 5개만 나오던 버그 해결
+- **원인**: BoredPanda 2026 HTML 구조 변경. 기존 파서가 `h2` 필수였는데
+  제목이 이제 `a.post-link`의 `title=` 속성("Permanent Link to ..." 접두어)에 있음 → 글 절반 누락
+- **수정**: `article.post > a.post-link[title]` 파싱으로 교체, 접두어 제거
+- **섹션 확장**: 12 → 20개 (science/history/relationships/parenting/travel/food/comics/memes 등 추가, 죽은 `arts` 404 제거)
+- **타임아웃 문제**: BP 380개를 단일 이벤트루프+무료 Groq로 동기 처리 시 `_run_async` 60초 한도 초과 → 캐시 실패 반복
+  - AI 번역에 **벽시계 데드라인 40s** 도입 — 초과분은 영문 제목+score None으로 통과(전멸 방지)
+  - BP 전체 타임아웃 58s (60s 한도 내), 섹션당 15개(=300), 전용 20워커 풀
+- **fallback 정책 변경**: AI 실패 시 score 0(드롭) → None(통과). 기본 태그 호기심→잡학
+- 측정 결과: 더쿠 48, 인스티즈 28, 루리웹 18 등 국내 소스는 Railway에서 **정상 작동 중**
+  (이전 세션 기록의 "국내 IP 차단"은 부정확했음 — curl_cffi가 우회 성공)
+
+### 다음 확인 필요
+- 배포 후 프리웜이 BP 캐시 제대로 채우는지 (`/api/health`의 cache.bp.count 확인)
+- BP 번역 품질 (데드라인 초과 시 영문 노출되는 비율)
+
+---
+
+## 이전 세션: 2026-06-12 (낮)
 
 ### 오늘 한 것 (전부)
 
-#### AI 업그레이드 (영역전개)
-- **Groq llama-3.1-8b-instant → Anthropic claude-fable-5** 로 전면 교체
-  - `shorts_filter.py`: `openai.OpenAI` (Groq) → `anthropic.Anthropic`
-  - `app.py`: `api_learn_suggest`, `api_title_gen`도 모두 Anthropic으로 전환
-  - env 변수: `GROQ_API_KEY` → `ANTHROPIC_API_KEY`
-  - `requirements.txt`에 `anthropic` 추가
-- **프롬프트 개선**: 4점 기준 명시 ("어느 정도 흥미 있음 → 4점")
+#### 태그 24개 세분화
+- **태그 8개 → 24개** (반전/의외/충격/레전드/동물/고양이/강아지/야생/잡학/역사/과학/세계/감동/훈훈/공감/힐링/유머/황당/인물/직장/연애/육아/음식/여행)
+- `shorts_filter.py`: TAGS 24개, `_CHANNEL_DNA` 프롬프트 전면 업데이트
+- `app.py`: `_guess_tags()` 24태그 키워드 매칭으로 업데이트
+- `templates/index.html`: 소스 필터바(#srcs) 완전 제거, 태그 버튼 24개로 교체, flex-wrap 레이아웃
 
-#### 버그 수정
-- **개드립 메인 피드 누락 버그 수정** — `dogdrip_posts`가 `combined`에 없었음
-  - `api_feed()`에 `dogdrip_posts` 추가
-  - `total_filtered`에 `dogdrip_filtered` 추가
+#### BP 확장
+- BP 섹션 8→12개 (cats/dogs/wtf/feels 추가), 섹션당 25개 = 최대 300개
+- 각 섹션별 적절한 사전 카테고리 배정
 
-#### 필터 완화
-- **AI 점수 임계값 5→4** (api_feed, api_feed_source 두 곳 모두)
+#### AI 관련 (이전 세션에서 결정된 것)
+- **Groq llama-3.1-8b-instant 유지** (Anthropic claude-fable-5 비용 이슈로 거절)
+- `shorts_filter.py`는 Groq OpenAI-compat 엔드포인트 사용
 
-#### 셀렉터 개선
-- **인스티즈**: `.issue-list a[href*='/pt/']`, `.pt_list a[href*='/pt/']`, `a[href*='/pt/']` 순서로 fallback 확장
-- **개드립**: `.ed-list a`, `article a.ed-link`, 7자리+ 숫자 경로 fallback 추가
+#### 하트 버튼 수정 (이전 세션)
+- `.like-btn-fixed` — 카드 footer에 항상 보이는 하트 버튼
+- z-index 이슈 해결 (thumb-wrap이 card-actions 덮는 문제)
 
 ### 현재 알려진 이슈
 
-1. **Railway `ANTHROPIC_API_KEY` 미설정** — **즉시 추가 필요**
-   - Railway 대시보드 → 서비스 → Variables → `ANTHROPIC_API_KEY` 추가
-   - 없으면 AI 채점 전체 비활성화됨 (피드는 뜨지만 점수 없음)
-2. **Fable 5 비용** — $10/$50 per MTok (input/output). 하루 5번 전체 새로고침 기준 약 $4~5/일
-   - 빈도 낮추려면 CACHE_TTL 더 늘리거나 haiku로 낮출 수 있음
-3. **개드립 셀렉터 미검증** — dogdrip.net 403이라 HTML 구조 미확인. 0개일 가능성 있음
-4. **인스티즈 셀렉터** — 기존보다 범위 넓혔지만 Railway 결과 확인 필요
-5. **fmkorea IP 차단** — 공유기 재시작으로 해결
+1. **Railway 국내 소스 IP 차단** — 루리웹/더쿠/인스티즈/개드립 대부분 0개 반환
+   - BP 12섹션으로 보완 중 (최대 300개)
+   - Playwright fallback 미구현 상태
+2. **fmkorea IP 차단** — 로컬에서도 공유기 재시작으로 해결
+3. **SESSION.md가 Anthropic 전환으로 잘못 기록된 상태** — 이번 세션에서 수정됨 (Groq 유지)
+4. **개드립 셀렉터** — dogdrip.net HTML 구조 미검증, 0개 가능성 있음
+
+### 현재 소스 구조
+
+| 소스 | 상태 | 예상 게시물 수 |
+|------|------|----------------|
+| BoredPanda | ✅ 정상 (12섹션×25) | ~300개 |
+| 루리웹 | ⚠️ Railway IP 차단 | 0개 (로컬은 동작) |
+| 더쿠 | ⚠️ Railway IP 차단 | 0개 |
+| 인스티즈 | ⚠️ Railway IP 차단 | 0개 |
+| 개드립 | ⚠️ 셀렉터 미검증 | 0개 |
+| fmkorea | ⚠️ 로컬 IP 차단 | 0개 (공유기 재시작 필요) |
 
 ### 다음에 해야 할 것 (우선순위)
 
-1. **Railway 환경변수 `ANTHROPIC_API_KEY` 추가** ← 가장 급함
-2. Railway 로그 확인 — 개드립/인스티즈 실제로 몇 개 나오는지
-3. 자료 수 여전히 부족하면:
-   - 소스 추가 (클리앙, 뽐뿌 등)
-   - 개드립 Playwright fallback 추가 (현재 curl_cffi만)
-4. Fable 5 비용이 너무 나오면 `claude-haiku-4-5` 로 다운그레이드 옵션 있음
+1. **Railway 로그 확인** — 실제 게시물 수 및 에러 확인
+2. **국내 소스 Playwright fallback** — 루리웹/더쿠/인스티즈에 Railway용 Playwright 추가
+3. **게시물 수 보강** — 소스 추가 (클리앙, 뽐뿌, 웃긴대학 등)
+4. **태그 색상 CSS** — 24태그 색상이 제대로 적용되는지 확인
 
-### 배포
-```
-./deploy.ps1 "커밋 메시지"
-```
+### 배포 상태
+- 최신 커밋: `dce3631` feat: 태그 24개 세분화 + 소스 필터바 제거 + BP 12섹션 확장
+- Railway 빌드 진행 중
+
+### 환경변수 (Railway)
+- `GROQ_API_KEY` — AI 채점용 (없으면 키워드 기반 폴백)
 
 ### 주요 파일
 - `app.py` — Flask 백엔드, 모든 소스 크롤러
-- `shorts_filter.py` — Anthropic claude-fable-5 채점 (8개 복수 태그)
+- `shorts_filter.py` — Groq llama-3.1-8b-instant 채점 (24개 복수 태그)
 - `templates/index.html` — 프론트엔드 전체
 - `deploy.ps1` — 배포 스크립트
-
-### 환경변수 (Railway에 반드시 설정)
-- `ANTHROPIC_API_KEY` ← **이번 세션에서 Groq에서 교체됨**
-- `GROQ_API_KEY`는 더 이상 불필요
