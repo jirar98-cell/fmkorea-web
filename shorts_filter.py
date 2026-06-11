@@ -117,9 +117,9 @@ def _parse_tags(raw_tags) -> list[str]:
     if isinstance(raw_tags, str):
         raw_tags = [raw_tags]
     if not isinstance(raw_tags, list):
-        return ["호기심"]
+        return ["잡학"]
     result = [t for t in raw_tags if isinstance(t, str) and t in TAGS_SET]
-    return result[:2] if result else ["호기심"]
+    return result[:2] if result else ["잡학"]
 
 
 def score_batch(titles: list[str]) -> list[dict]:
@@ -127,7 +127,7 @@ def score_batch(titles: list[str]) -> list[dict]:
     if not titles:
         return []
     numbered = "\n".join(f"{i}:{t}" for i, t in enumerate(titles))
-    fallback = [{"tags": ["호기심"], "category": "호기심", "score": 0}] * len(titles)
+    fallback = [{"tags": ["잡학"], "category": "잡학", "score": None} for _ in titles]
     try:
         resp = client.chat.completions.create(
             model=MODEL,
@@ -140,7 +140,7 @@ def score_batch(titles: list[str]) -> list[dict]:
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw)
-        result = [{"tags": ["호기심"], "category": "호기심", "score": 0}] * len(titles)
+        result = [{"tags": ["잡학"], "category": "잡학", "score": None} for _ in titles]
         for item in data:
             idx = item.get("i", -1)
             if not (isinstance(idx, int) and 0 <= idx < len(titles)):
@@ -158,7 +158,8 @@ def translate_and_score_batch(titles_en: list[str]) -> list[dict]:
     if not titles_en:
         return []
     numbered = "\n".join(f"{i}:{t}" for i, t in enumerate(titles_en))
-    fallback = [{"title_ko": t, "tags": ["호기심"], "category": "호기심", "score": 0} for t in titles_en]
+    # score None → 피드 필터 통과 (rate limit 시 영문 제목이라도 살림)
+    fallback = [{"title_ko": t, "tags": ["잡학"], "category": "잡학", "score": None} for t in titles_en]
     try:
         resp = client.chat.completions.create(
             model=MODEL,
@@ -171,7 +172,7 @@ def translate_and_score_batch(titles_en: list[str]) -> list[dict]:
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw)
-        result = [{"title_ko": t, "tags": ["호기심"], "category": "호기심", "score": 0} for t in titles_en]
+        result = [{"title_ko": t, "tags": ["잡학"], "category": "잡학", "score": None} for t in titles_en]
         for item in data:
             idx = item.get("i", -1)
             if not (isinstance(idx, int) and 0 <= idx < len(titles_en)):

@@ -388,7 +388,7 @@ async def _ai_filter_posts(posts):
                 all_results.extend(r)
         except Exception:
             for c in group:
-                all_results.extend([{"tags": ["호기심"], "score": None}] * len(c))
+                all_results.extend([{"tags": ["잡학"], "score": None}] * len(c))
 
     tagged = []
     for post, result in zip(posts, all_results):
@@ -398,7 +398,7 @@ async def _ai_filter_posts(posts):
             post_copy["tags"] = tags
             post_copy["category"] = tags[0]
         else:
-            cat = result.get("category") or "호기심"
+            cat = result.get("category") or "잡학"
             post_copy["category"] = cat
             post_copy["tags"] = [cat]
         score = result.get("score")
@@ -955,43 +955,64 @@ def _parse_rec(rec_str) -> int:
         return 0
 
 
-# BoredPanda 섹션 — 8개 섹션 × 20개 = 160개 (AI 병렬 처리로 속도 확보)
+# BoredPanda 섹션 — 18개 섹션 × 20개 (24태그 매핑, AI 병렬 처리)
 _BP_SECTIONS = [
-    ("https://www.boredpanda.com/animals/",    "동물"),
-    ("https://www.boredpanda.com/funny/",      "유머"),
-    ("https://www.boredpanda.com/interesting/","잡학"),
-    ("https://www.boredpanda.com/people/",     "인물"),
-    ("https://www.boredpanda.com/life/",       "공감"),
-    ("https://www.boredpanda.com/arts/",       "인물"),
-    ("https://www.boredpanda.com/nature/",     "야생"),
-    ("https://www.boredpanda.com/wholesome/",  "훈훈"),
-    ("https://www.boredpanda.com/cats/",       "고양이"),
-    ("https://www.boredpanda.com/dogs/",       "강아지"),
-    ("https://www.boredpanda.com/wtf/",        "충격"),
-    ("https://www.boredpanda.com/feels/",      "감동"),
+    ("https://www.boredpanda.com/animals/",      "동물"),
+    ("https://www.boredpanda.com/cats/",         "고양이"),
+    ("https://www.boredpanda.com/dogs/",         "강아지"),
+    ("https://www.boredpanda.com/nature/",       "야생"),
+    ("https://www.boredpanda.com/funny/",        "유머"),
+    ("https://www.boredpanda.com/comics/",       "유머"),
+    ("https://www.boredpanda.com/memes/",        "유머"),
+    ("https://www.boredpanda.com/wtf/",          "충격"),
+    ("https://www.boredpanda.com/interesting/",  "잡학"),
+    ("https://www.boredpanda.com/science/",      "과학"),
+    ("https://www.boredpanda.com/history/",      "역사"),
+    ("https://www.boredpanda.com/people/",       "인물"),
+    ("https://www.boredpanda.com/art/",          "인물"),
+    ("https://www.boredpanda.com/life/",         "공감"),
+    ("https://www.boredpanda.com/wholesome/",    "훈훈"),
+    ("https://www.boredpanda.com/feels/",        "감동"),
+    ("https://www.boredpanda.com/relationships/","연애"),
+    ("https://www.boredpanda.com/parenting/",    "육아"),
+    ("https://www.boredpanda.com/travel/",       "여행"),
+    ("https://www.boredpanda.com/food/",         "음식"),
 ]
-_BP_PER_SECTION = 25  # 12 × 25 = 300개
+_BP_PER_SECTION = 20  # 20섹션 × 20 = 최대 400개
+
+_BP_TITLE_PREFIX = "Permanent Link to "
 
 def _fetch_boredpanda_section(url, pre_cat):
-    """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리)."""
+    """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리).
+    2026 구조: article.post > a.post-link[title] (제목은 title 속성, h2 없는 글 많음)."""
     headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "en-US,en;q=0.9"}
     try:
         r = req_lib.get(url, headers=headers, timeout=8)
         soup = BeautifulSoup(r.text, "html.parser")
-        results = []
-        for article in soup.select("article"):
-            h2 = article.select_one("h2")
-            a  = article.select_one("a[href]")
-            if not h2 or not a:
+        results, seen = [], set()
+        for article in soup.select("article.post, article"):
+            a = article.select_one("a.post-link[href]") or article.select_one("a[href]")
+            if not a:
                 continue
-            title_en = h2.get_text(strip=True)
-            href     = a.get("href", "").split("?")[0]
-            if not title_en or not href.startswith("https://www.boredpanda.com/"):
+            # 제목: title 속성 우선 ("Permanent Link to " 접두어 제거), 없으면 h2/h3
+            title_en = (a.get("title") or "").strip()
+            if title_en.startswith(_BP_TITLE_PREFIX):
+                title_en = title_en[len(_BP_TITLE_PREFIX):].strip()
+            if not title_en:
+                hx = article.select_one("h2, h3")
+                title_en = hx.get_text(strip=True) if hx else ""
+            href = a.get("href", "").split("?")[0]
+            if not title_en or len(title_en) < 4:
                 continue
+            if not href.startswith("https://www.boredpanda.com/"):
+                continue
+            if href in seen:
+                continue
+            seen.add(href)
             pts_el = article.select_one(".points-only-digits")
             pts = pts_el.get_text(strip=True) if pts_el else ""
             img_el = article.select_one("img")
-            img_src = img_el.get("src", "") if img_el else ""
+            img_src = (img_el.get("src") or img_el.get("data-src") or "") if img_el else ""
             results.append({
                 "title":     title_en,
                 "url":       href,
@@ -1008,11 +1029,14 @@ def _fetch_boredpanda_section(url, pre_cat):
         return []
 
 
+from concurrent.futures import ThreadPoolExecutor as _ThreadPool
+_bp_executor = _ThreadPool(max_workers=20)  # 전 섹션 동시 요청용 전용 풀
+
 async def _fetch_boredpanda():
-    """BoredPanda 여러 섹션 병렬 크롤링."""
+    """BoredPanda 여러 섹션 병렬 크롤링 (전용 20워커 풀로 동시 요청)."""
     loop = asyncio.get_event_loop()
     batches = await asyncio.gather(*[
-        loop.run_in_executor(None, lambda u=u, c=c: _fetch_boredpanda_section(u, c))
+        loop.run_in_executor(_bp_executor, lambda u=u, c=c: _fetch_boredpanda_section(u, c))
         for u, c in _BP_SECTIONS
     ])
     results, seen = [], set()
@@ -1034,7 +1058,7 @@ async def _fetch_boredpanda_classified():
 
 async def _bp_fetch_and_score():
     try:
-        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=20.0)
+        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=40.0)
     except asyncio.TimeoutError:
         posts = []
     if not posts:
@@ -1045,20 +1069,24 @@ async def _bp_fetch_and_score():
 
     loop = asyncio.get_event_loop()
     BATCH = 15
+    WAVE = 6  # 동시 Groq 호출 수 (무료 tier rate limit 방어)
     titles_en = [p["title"] for p in posts]
     chunks = [titles_en[i:i+BATCH] for i in range(0, len(titles_en), BATCH)]
 
-    # 모든 AI 배치 동시 실행 (순차→병렬, 5배치 → ~8초)
-    try:
-        results_list = await asyncio.gather(*[
-            loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
-            for chunk in chunks
-        ])
-        all_results = []
-        for r in results_list:
-            all_results.extend(r)
-    except Exception:
-        all_results = [{"title_ko": t, "tags": ["호기심"], "score": None} for t in titles_en]
+    # 웨이브 단위로 AI 배치 실행 — rate limit 시 전멸 방지
+    all_results = []
+    for w in range(0, len(chunks), WAVE):
+        wave = chunks[w:w+WAVE]
+        try:
+            results_list = await asyncio.gather(*[
+                loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
+                for chunk in wave
+            ])
+            for r in results_list:
+                all_results.extend(r)
+        except Exception:
+            for chunk in wave:
+                all_results.extend([{"title_ko": t, "tags": ["잡학"], "score": None} for t in chunk])
 
     tagged = []
     for post, result in zip(posts, all_results):
@@ -1069,7 +1097,7 @@ async def _bp_fetch_and_score():
             post_copy["tags"] = tags
             post_copy["category"] = tags[0]
         else:
-            cat = result.get("category") or "호기심"
+            cat = result.get("category") or "잡학"
             post_copy["category"] = cat
             post_copy["tags"] = [cat]
         score = result.get("score")
