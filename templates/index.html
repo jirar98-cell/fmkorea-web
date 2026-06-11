@@ -717,7 +717,7 @@ function makeCard(post) {
       </div>
     </div>`;
 
-  // ❤️ 즐겨찾기
+  // ❤️ 즐겨찾기 + 자동 제목 생성
   card.querySelector('.like-btn').addEventListener('click', e => {
     e.stopPropagation();
     const btn = e.currentTarget;
@@ -725,7 +725,8 @@ function makeCard(post) {
     btn.classList.toggle('liked', added);
     btn.textContent = added ? '❤' : '♡';
     card.classList.toggle('liked-card', added);
-    toast(added ? '❤️ 학습소에 저장됨' : '즐겨찾기 취소');
+    toast(added ? '❤️ 저장됨 — 제목 생성 중...' : '즐겨찾기 취소');
+    if (added) openTitleGen(post.title);
   });
 
   // 📋 복사

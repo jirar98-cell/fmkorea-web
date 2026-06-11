@@ -292,10 +292,42 @@ async def _scrape_page(browser, url, extra_filter=None):
     return _parse_fmkorea_html(html, extra_filter)
 
 
+def _guess_tags(title: str) -> list[str]:
+    """AI 없을 때 제목 키워드로 태그 추측."""
+    t = title
+    tags = []
+    if any(w in t for w in ["강아지","고양이","동물","개","냥","멍","펫","새끼","오리","새","물고기","뱀","토끼","사자","호랑이","코끼리","원숭이","침팬지","곰","여우","늑대","표범","치타","독수리","앵무","거북","상어","고래","돌고래","펭귄"]):
+        tags.append("동물")
+    if any(w in t for w in ["반전","알고보니","알고 보니","뜻밖","결국엔","알고나니","그런데 사실","근데 사실","놀랍게도"]):
+        tags.append("반전")
+    if any(w in t for w in ["실화","충격","이게맞아","진짜로","사실은","ㄷㄷ","헐","헉","미친","세상에","어떻게","믿기지","놀라운"]):
+        tags.append("의외")
+    if any(w in t for w in ["감동","울었","눈물","따뜻","힘내","위로","뭉클","보람","고마","대견"]):
+        tags.append("감동")
+    if any(w in t for w in ["ㅋㅋ","ㅎㅎ","웃긴","웃음","재밌","개웃","빵","유머","개그","망가","레전드","어이","황당"]):
+        tags.append("유머")
+    if any(w in t for w in ["왜","이유","역사","과학","잡학","세계","나라","지식","몰랐던","사실","신기한","알면","궁금"]):
+        tags.append("호기심")
+    if any(w in t for w in ["할머니","할아버지","아빠","엄마","아이","학생","선생","의사","경찰","노인","청년","소년","소녀"]):
+        tags.append("인물")
+    if any(w in t for w in ["공감","나만","우리","다들","누구나","일상","직장","학교","연애","부부","친구"]):
+        tags.append("공감")
+    return tags[:2] if tags else ["호기심"]
+
+
 async def _ai_filter_posts(posts):
     """AI로 게시물 채점. 배치 3개 동시 실행으로 속도 3배 향상."""
     if not _sf_available or not posts:
-        return posts, 0
+        # AI 없을 때 키워드 기반 태그 부여
+        tagged = []
+        for post in posts:
+            p = dict(post)
+            if not p.get("tags") and not p.get("category"):
+                guessed = _guess_tags(p.get("title", ""))
+                p["tags"] = guessed
+                p["category"] = guessed[0]
+            tagged.append(p)
+        return tagged, 0
 
     loop = asyncio.get_event_loop()
     BATCH = 20
