@@ -8,7 +8,9 @@
       "WebFetch(domain:fmkorea-web-production.up.railway.app)",
       "Bash(railway logs *)",
       "WebFetch(domain:www.youtube.com)",
-      "Bash(mkdir -p \"C:\\\\Users\\\\alsdn\\\\OneDrive\\\\바탕 화면\\\\fmkorea_web\\\\.claude\\\\commands\")"
+      "Bash(mkdir -p \"C:\\\\Users\\\\alsdn\\\\OneDrive\\\\바탕 화면\\\\fmkorea_web\\\\.claude\\\\commands\")",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [

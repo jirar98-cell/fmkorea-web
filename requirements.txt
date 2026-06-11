@@ -5,6 +5,7 @@ beautifulsoup4
 requests
 gunicorn
 openai
+anthropic
 Pillow
 curl-cffi
 cloudscraper

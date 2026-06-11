@@ -116,7 +116,7 @@ _score_lock = threading.Lock()
 
 _translate_score_fn = None
 try:
-    if os.environ.get("GROQ_API_KEY"):
+    if os.environ.get("ANTHROPIC_API_KEY"):
         from shorts_filter import score_material as _score_fn  # type: ignore
         from shorts_filter import score_batch as _score_batch_fn  # type: ignore
         from shorts_filter import translate_and_score_batch as _translate_score_fn  # type: ignore
@@ -737,11 +737,11 @@ def _fetch_instiz():
         soup = BeautifulSoup(html, "html.parser")
         # 셀렉터 우선순위: 인스티즈는 버전별로 다름
         # 실제 확인된 셀렉터 우선 (.pt 컨테이너 내 게시물 링크)
-        anchors = (soup.select(".pt a[href*='/pt/']")
+        anchors = (soup.select(".issue-list a[href*='/pt/']")
+                   or soup.select(".pt_list a[href*='/pt/']")
                    or soup.select("a.listsubject")
-                   or soup.select(".list_wrap a[href*='/pt/']")
-                   or soup.select("table a[href*='instiz.net/pt/']"))
-        # 숫자 없는 /pt/ 링크만 (게시물 ID 포함)
+                   or soup.select("a[href*='/pt/']"))
+        # 게시물 ID가 포함된 /pt/ 링크만
         anchors = [a for a in anchors if re.search(r'/pt/\d+', a.get("href", ""))]
         for a in anchors:
             title = a.get_text(strip=True)
@@ -1061,11 +1061,12 @@ def api_feed():
         ruli_posts, _, ruli_filtered         = get_cached("ruli",    force=force, async_fn=_fetch_ruliweb_classified)
         bp_posts,   _, bp_filtered           = get_cached("bp",      force=force, async_fn=_fetch_boredpanda_classified)
         import math
-        theqoo_posts,  _, theqoo_filtered  = get_cached("theqoo",  force=force, async_fn=_fetch_theqoo_classified)
-        instiz_posts,  _, instiz_filtered  = get_cached("instiz",  force=force, async_fn=_fetch_instiz_classified)
-        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts
-        # 채널 DNA 점수 6 미만 제외 (점수 없으면 통과)
-        combined = [p for p in combined if p.get("score", 5) >= 5]
+        theqoo_posts,   _, theqoo_filtered   = get_cached("theqoo",   force=force, async_fn=_fetch_theqoo_classified)
+        instiz_posts,   _, instiz_filtered   = get_cached("instiz",   force=force, async_fn=_fetch_instiz_classified)
+        dogdrip_posts,  _, dogdrip_filtered  = get_cached("dogdrip",  force=force, async_fn=_fetch_dogdrip_classified)
+        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts + dogdrip_posts
+        # 채널 DNA 점수 4 미만 제외 (점수 없으면 통과)
+        combined = [p for p in combined if p.get("score", 5) >= 4]
         # 낮은 반응 제외 (수치 없으면 통과)
         combined = [p for p in combined if _parse_rec(p.get("recommend", 0)) >= 3 or not p.get("recommend")]
         # URL 중복 제거
@@ -1079,7 +1080,7 @@ def api_feed():
             key=lambda p: p.get("score", 5) * 2 + math.log10(_parse_rec(p.get("recommend", 0)) + 10),
             reverse=True,
         )
-        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered
+        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered + dogdrip_filtered
         return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1098,10 +1099,13 @@ def _fetch_dogdrip():
         soup = BeautifulSoup(html, "html.parser")
         # 개드립 셀렉터 — 다중 시도
         anchors = (soup.select("a.ed-link")
-                   or soup.select(".ed-list a[href*='/dogdrip/']")
-                   or soup.select("table a[href*='/dogdrip/']")
+                   or soup.select(".ed-list a")
+                   or soup.select(".document-list a.ed-link")
+                   or soup.select("article a.ed-link")
                    or [a for a in soup.select("a[href]")
-                       if "/dogdrip/" in a.get("href","") and len(a.get_text(strip=True)) > 4])
+                       if "/dogdrip/" in a.get("href","") and len(a.get_text(strip=True)) > 4]
+                   or [a for a in soup.select("a[href]")
+                       if re.search(r'/\d{7,}', a.get("href","")) and len(a.get_text(strip=True)) > 4])
         seen_hrefs = set()
         for a in anchors:
             title = a.get_text(strip=True)
@@ -1158,7 +1162,7 @@ def api_feed_source():
     key, async_fn, label = _SOURCE_MAP[src]
     try:
         posts, fetched_at, filtered = get_cached(key, force=force, async_fn=async_fn)
-        posts = [p for p in posts if p.get("score", 5) >= 5]
+        posts = [p for p in posts if p.get("score", 5) >= 4]
         posts = [p for p in posts if _parse_rec(p.get("recommend", 0)) >= 3 or not p.get("recommend")]
         return jsonify({"src": src, "label": label, "posts": posts,
                         "filtered": filtered, "fetched_at": fetched_at})
@@ -1304,15 +1308,15 @@ def api_score_available():
 def api_learn_suggest():
     """즐겨찾기 기반 다음 소재 방향 AI 분석."""
     if not _sf_available:
-        return jsonify({"error": "GROQ_API_KEY 필요"}), 503
+        return jsonify({"error": "ANTHROPIC_API_KEY 필요"}), 503
     data = request.get_json(silent=True) or {}
     tag_dist = data.get("tags", {})    # {"반전": 5, "동물": 3, ...}
     titles   = data.get("titles", [])[:10]
     if not tag_dist and not titles:
         return jsonify({"error": "데이터 없음"}), 400
     try:
-        from openai import OpenAI as _OAI
-        _cli = _OAI(base_url="https://api.groq.com/openai/v1", api_key=os.environ["GROQ_API_KEY"])
+        import anthropic as _ant
+        _cli = _ant.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         prompt = f"""@puppyd5g 쇼츠 채널 ("퍼피독 — 굳이 궁금하지 않았던 이야기") 운영자의 즐겨찾기 패턴을 분석해서 다음 소재 탐색 방향을 알려줘.
 
 즐겨찾기 태그 분포: {json.dumps(tag_dist, ensure_ascii=False)}
@@ -1324,11 +1328,11 @@ def api_learn_suggest():
 {{"summary":"한 줄 성향 요약 (25자 이내)","directions":["다음에 찾으면 좋을 소재 방향 3가지 (각 20자)"],"avoid":["피하면 좋을 소재 1-2가지 (각 15자)"]}}
 
 JSON만. 다른 텍스트 금지."""
-        resp = _cli.chat.completions.create(
-            model="llama-3.1-8b-instant", max_tokens=400,
+        resp = _cli.messages.create(
+            model="claude-fable-5", max_tokens=400,
             messages=[{"role": "user", "content": prompt}]
         )
-        raw = (resp.choices[0].message.content or "").strip()
+        raw = (resp.content[0].text or "").strip()
         raw = raw.replace("```json","").replace("```","").strip()
         return jsonify(json.loads(raw))
     except Exception as e:
@@ -1342,10 +1346,10 @@ def api_title_gen():
     if not title:
         return jsonify({"titles": []})
     if not _sf_available:
-        return jsonify({"error": "GROQ_API_KEY 필요"}), 503
+        return jsonify({"error": "ANTHROPIC_API_KEY 필요"}), 503
     try:
-        from openai import OpenAI as _OAI
-        _cli = _OAI(base_url="https://api.groq.com/openai/v1", api_key=os.environ["GROQ_API_KEY"])
+        import anthropic as _ant
+        _cli = _ant.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         prompt = f"""유튜브 쇼츠 채널 @puppyd5g ("퍼피독 — 굳이 궁금하지 않았던 이야기") 스타일로 아래 소재의 쇼츠 제목을 3개 만들어라.
 
 채널 히트작 예시 (참고):
@@ -1364,13 +1368,12 @@ def api_title_gen():
 소재: {title}
 
 출력: ["제목1", "제목2", "제목3"] JSON 배열만. 다른 텍스트 금지."""
-        resp = _cli.chat.completions.create(
-            model="llama-3.1-8b-instant",
+        resp = _cli.messages.create(
+            model="claude-fable-5",
             max_tokens=200,
-            temperature=0.9,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = (resp.choices[0].message.content or "").strip()
+        raw = (resp.content[0].text or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         titles = json.loads(raw)
         if isinstance(titles, list):
@@ -1386,7 +1389,7 @@ def api_score():
     url   = request.args.get("url",   "").strip()
     use_search = request.args.get("search", "0") == "1"
     if not _sf_available:
-        return jsonify({"error": "GROQ_API_KEY 미설정 — AI 채점 불가"}), 503
+        return jsonify({"error": "ANTHROPIC_API_KEY 미설정 — AI 채점 불가"}), 503
     if not title:
         return jsonify({"error": "title 필요"}), 400
     cache_key = f"{title}|{use_search}"
