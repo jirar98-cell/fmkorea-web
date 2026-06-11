@@ -12,6 +12,12 @@ from flask import Flask, render_template, jsonify, request
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 from bs4 import BeautifulSoup
+try:
+    import warnings
+    from bs4 import XMLParsedAsHTMLWarning
+    warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+except Exception:
+    pass
 
 _stealth = Stealth()
 
@@ -1059,16 +1065,13 @@ async def _fetch_boredpanda_classified():
 # AI 번역 단계 데드라인 — 초과분은 영문 제목 그대로 통과 (전멸 방지)
 _BP_AI_DEADLINE = 40.0
 
-async def _bp_fetch_and_score():
-    try:
-        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=15.0)
-    except asyncio.TimeoutError:
-        posts = []
+async def _translate_score_posts(posts, deadline_sec=_BP_AI_DEADLINE):
+    """영문 제목 게시물 리스트 → AI 번역+채점 (BP/레딧 공용).
+    웨이브 단위 + 벽시계 데드라인 — 초과분은 영문 제목 그대로(score None) 통과."""
     if not posts:
-        return [], 0
-
+        return []
     if not _sf_available or _translate_score_fn is None:
-        return posts, 0
+        return posts
 
     loop = asyncio.get_event_loop()
     BATCH = 15
@@ -1076,13 +1079,11 @@ async def _bp_fetch_and_score():
     titles_en = [p["title"] for p in posts]
     chunks = [titles_en[i:i+BATCH] for i in range(0, len(titles_en), BATCH)]
 
-    # 웨이브 단위 AI 배치 + 벽시계 데드라인 — 초과 시 나머지는 영문 통과
     all_results = []
-    deadline = time.monotonic() + _BP_AI_DEADLINE
+    deadline = time.monotonic() + deadline_sec
     for w in range(0, len(chunks), WAVE):
         wave = chunks[w:w+WAVE]
         if time.monotonic() >= deadline:
-            # 시간 초과 — 남은 청크는 영문 제목 그대로 (score None = 통과)
             for chunk in wave:
                 all_results.extend([{"title_ko": t, "tags": ["잡학"], "score": None} for t in chunk])
             continue
@@ -1113,8 +1114,109 @@ async def _bp_fetch_and_score():
         if score is not None:
             post_copy["score"] = score
         tagged.append(post_copy)
+    return tagged
 
+
+async def _bp_fetch_and_score():
+    try:
+        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=15.0)
+    except asyncio.TimeoutError:
+        posts = []
+    if not posts:
+        return [], 0
+    tagged = await _translate_score_posts(posts)
     return tagged, 0
+
+
+# ─── 레딧 — @puppyd5g 채널 DNA에 최적화된 서브레딧 큐레이션 ───
+_REDDIT_SUBS = [
+    ("Awwducational",        "잡학"),   # 동물 잡학 (채널 슬로건과 동일)
+    ("todayilearned",        "잡학"),   # "굳이 궁금하지 않았던" TIL
+    ("interestingasfuck",    "의외"),
+    ("Damnthatsinteresting", "의외"),
+    ("BeAmazed",             "충격"),
+    ("nextfuckinglevel",     "충격"),
+    ("NatureIsFuckingLit",   "야생"),
+    ("AnimalsBeingBros",     "동물"),
+    ("AnimalsBeingDerps",    "동물"),
+    ("aww",                  "동물"),
+    ("rarepuppers",          "강아지"),
+    ("MadeMeSmile",          "훈훈"),
+    ("HumansBeingBros",      "감동"),
+    ("nostupidquestions",    "공감"),
+]
+_REDDIT_PER_SUB = 12
+_reddit_executor = _ThreadPool(max_workers=14)
+_REDDIT_IMG_PAT = re.compile(r'<img src="([^"]+)"')
+
+# Reddit .json은 OAuth 봉쇄(403)라 RSS(.rss) 사용 — 업보트 미제공이나 hot이라 이미 인기글
+def _fetch_reddit_section(sub, pre_cat):
+    """서브레딧 hot RSS 파싱 (html.parser — lxml 불필요)."""
+    url = f"https://www.reddit.com/r/{sub}/hot/.rss?limit=30"
+    headers = {"User-Agent": _CRAWL_UA, "Accept-Language": "en"}
+    try:
+        session = _get_cffi_session()
+        r = (session.get(url, headers=headers, timeout=10) if session
+             else req_lib.get(url, headers=headers, timeout=10))
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        results = []
+        for e in soup.find_all("entry"):
+            t = e.find("title")
+            l = e.find("link")
+            title = t.get_text(strip=True) if t else ""
+            href = l.get("href") if l else ""
+            if not title or len(title) < 4 or not href:
+                continue
+            thumb = ""
+            c = e.find("content")
+            if c:
+                m = _REDDIT_IMG_PAT.search(c.get_text())
+                if m and m.group(1).startswith("http"):
+                    thumb = m.group(1).replace("&amp;", "&")
+            results.append({
+                "title": title, "url": href, "date": "",
+                "recommend": "", "img": thumb,
+                "source": "레딧", "category": pre_cat,
+            })
+            if len(results) >= _REDDIT_PER_SUB:
+                break
+        return results
+    except Exception:
+        return []
+
+
+async def _fetch_reddit_all():
+    loop = asyncio.get_event_loop()
+    batches = await asyncio.gather(*[
+        loop.run_in_executor(_reddit_executor, lambda s=s, c=c: _fetch_reddit_section(s, c))
+        for s, c in _REDDIT_SUBS
+    ])
+    results, seen = [], set()
+    for batch in batches:
+        for p in batch:
+            if p["url"] not in seen:
+                seen.add(p["url"])
+                results.append(p)
+    return results
+
+
+async def _fetch_reddit_classified():
+    """레딧 크롤링 → AI 번역+채점. BP와 동일 파이프라인. 58초 한도."""
+    async def _inner():
+        try:
+            posts = await asyncio.wait_for(_fetch_reddit_all(), timeout=15.0)
+        except asyncio.TimeoutError:
+            posts = []
+        if not posts:
+            return [], 0
+        tagged = await _translate_score_posts(posts)
+        return tagged, 0
+    try:
+        return await asyncio.wait_for(_inner(), timeout=58.0)
+    except asyncio.TimeoutError:
+        return [], 0
 
 
 _MANIFEST = {
@@ -1179,7 +1281,8 @@ def api_feed():
         theqoo_posts,   _, theqoo_filtered   = get_cached("theqoo",   force=force, async_fn=_fetch_theqoo_classified)
         instiz_posts,   _, instiz_filtered   = get_cached("instiz",   force=force, async_fn=_fetch_instiz_classified)
         dogdrip_posts,  _, dogdrip_filtered  = get_cached("dogdrip",  force=force, async_fn=_fetch_dogdrip_classified)
-        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts + dogdrip_posts
+        reddit_posts,   _, reddit_filtered   = get_cached("reddit",   force=force, async_fn=_fetch_reddit_classified)
+        combined = fm_posts + ruli_posts + bp_posts + theqoo_posts + instiz_posts + dogdrip_posts + reddit_posts
         # 채널 DNA 점수 4 미만 제외 (점수 없으면 통과)
         combined = [p for p in combined if p.get("score", 5) >= 4]
         # 낮은 반응 제외 (수치 없으면 통과)
@@ -1199,7 +1302,7 @@ def api_feed():
                 base -= 6
             return base
         deduped.sort(key=_sort_key, reverse=True)
-        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered + dogdrip_filtered
+        total_filtered = fm_filtered + ruli_filtered + bp_filtered + theqoo_filtered + instiz_filtered + dogdrip_filtered + reddit_filtered
         return jsonify({"posts": deduped, "count": len(deduped), "filtered": total_filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1268,6 +1371,7 @@ _SOURCE_MAP = {
     "theqoo":  ("theqoo",  _fetch_theqoo_classified,      "더쿠"),
     "instiz":  ("instiz",  _fetch_instiz_classified,      "인스티즈"),
     "dogdrip": ("dogdrip", _fetch_dogdrip_classified,     "개드립"),
+    "reddit":  ("reddit",  _fetch_reddit_classified,      "레딧"),
 }
 
 
@@ -1313,7 +1417,7 @@ def api_dc():
 def api_reddit():
     try:
         force = request.args.get("refresh") == "1"
-        posts, fetched_at, filtered = get_cached_sync("reddit", _fetch_reddit, force)
+        posts, fetched_at, filtered = get_cached("reddit", force=force, async_fn=_fetch_reddit_classified)
         return jsonify({"posts": posts, "count": len(posts), "filtered": filtered, "fetched_at": fetched_at})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1645,6 +1749,7 @@ def _prewarm():
         ("humor",    lambda: _run_async(_scrape(HUMOR_URL, pages=2))),
         ("ruli",     lambda: _run_async(_fetch_ruliweb_classified())),
         ("bp",       lambda: _run_async(_fetch_boredpanda_classified())),
+        ("reddit",   lambda: _run_async(_fetch_reddit_classified())),
         ("theqoo",   lambda: _run_async(_fetch_theqoo_classified())),
         ("instiz",   lambda: _run_async(_fetch_instiz_classified())),
         ("dogdrip",  lambda: _run_async(_fetch_dogdrip_classified())),
