@@ -293,26 +293,68 @@ async def _scrape_page(browser, url, extra_filter=None):
 
 
 def _guess_tags(title: str) -> list[str]:
-    """AI 없을 때 제목 키워드로 태그 추측."""
+    """AI 없을 때 제목 키워드로 태그 추측 (24태그 체계)."""
     t = title
     tags = []
-    if any(w in t for w in ["강아지","고양이","동물","개","냥","멍","펫","새끼","오리","새","물고기","뱀","토끼","사자","호랑이","코끼리","원숭이","침팬지","곰","여우","늑대","표범","치타","독수리","앵무","거북","상어","고래","돌고래","펭귄"]):
+    # 고양이/강아지 먼저 (동물보다 구체적)
+    if any(w in t for w in ["고양이","냥","냥이","야옹","猫"]):
+        tags.append("고양이")
+    elif any(w in t for w in ["강아지","멍멍","댕댕","개","犬"]):
+        tags.append("강아지")
+    elif any(w in t for w in ["사자","호랑이","코끼리","원숭이","침팬지","곰","여우","늑대","표범","치타","독수리","앵무","상어","고래","돌고래","펭귄","동물","야생","자연","생태"]):
+        tags.append("야생")
+    elif any(w in t for w in ["펫","반려","새끼","오리","토끼","물고기","뱀","새"]):
         tags.append("동물")
-    if any(w in t for w in ["반전","알고보니","알고 보니","뜻밖","결국엔","알고나니","그런데 사실","근데 사실","놀랍게도"]):
+    # 반전/의외
+    if any(w in t for w in ["반전","알고보니","알고 보니","뜻밖","알고나니","근데 사실","결국"]):
         tags.append("반전")
-    if any(w in t for w in ["실화","충격","이게맞아","진짜로","사실은","ㄷㄷ","헐","헉","미친","세상에","어떻게","믿기지","놀라운"]):
+    elif any(w in t for w in ["실화","ㄷㄷ","헐","헉","믿기지","실제로","진짜","사실은","놀라운"]):
         tags.append("의외")
-    if any(w in t for w in ["감동","울었","눈물","따뜻","힘내","위로","뭉클","보람","고마","대견"]):
+    elif any(w in t for w in ["충격","경악","충격적","어처구니","황당"]):
+        tags.append("충격")
+    elif any(w in t for w in ["레전드","레전","역대급","ㄹㅇ레전"]):
+        tags.append("레전드")
+    # 감정
+    if any(w in t for w in ["감동","울었","눈물","뭉클","보람"]):
         tags.append("감동")
-    if any(w in t for w in ["ㅋㅋ","ㅎㅎ","웃긴","웃음","재밌","개웃","빵","유머","개그","망가","레전드","어이","황당"]):
-        tags.append("유머")
-    if any(w in t for w in ["왜","이유","역사","과학","잡학","세계","나라","지식","몰랐던","사실","신기한","알면","궁금"]):
-        tags.append("호기심")
-    if any(w in t for w in ["할머니","할아버지","아빠","엄마","아이","학생","선생","의사","경찰","노인","청년","소년","소녀"]):
-        tags.append("인물")
-    if any(w in t for w in ["공감","나만","우리","다들","누구나","일상","직장","학교","연애","부부","친구"]):
+    elif any(w in t for w in ["훈훈","따뜻","미소","귀여운","사랑","고마"]):
+        tags.append("훈훈")
+    elif any(w in t for w in ["힐링","위로","편안","힘내"]):
+        tags.append("힐링")
+    elif any(w in t for w in ["공감","나만","다들","누구나","일상"]):
         tags.append("공감")
-    return tags[:2] if tags else ["호기심"]
+    # 지식
+    if any(w in t for w in ["역사","조선","일제","전쟁","왕","황제","고대"]):
+        tags.append("역사")
+    elif any(w in t for w in ["과학","의학","뇌","신체","연구","박사","실험"]):
+        tags.append("과학")
+    elif any(w in t for w in ["세계","나라","해외","외국","미국","일본","유럽","아프리카"]):
+        tags.append("세계")
+    elif any(w in t for w in ["잡학","굳이","사실","알면","이유","왜","몰랐던","궁금"]):
+        tags.append("잡학")
+    # 사회/인물
+    if any(w in t for w in ["직장","회사","상사","부장","월급","야근"]):
+        tags.append("직장")
+    elif any(w in t for w in ["연애","남친","여친","남자친구","여자친구","부부","결혼","이혼"]):
+        tags.append("연애")
+    elif any(w in t for w in ["아이","육아","아기","엄마","아빠","부모","어린이"]):
+        tags.append("육아")
+    elif any(w in t for w in ["음식","요리","먹방","맛집","레시피","케이크"]):
+        tags.append("음식")
+    elif any(w in t for w in ["여행","해외여행","여행지","관광","비행기"]):
+        tags.append("여행")
+    # 유머
+    if any(w in t for w in ["ㅋㅋ","ㅎㅎ","웃긴","재밌","개웃","빵","유머","개그"]):
+        if "유머" not in tags:
+            tags.append("유머")
+    elif any(w in t for w in ["황당","어이없","어처구니"]):
+        if "황당" not in tags:
+            tags.append("황당")
+    # 인물 (마지막 폴백)
+    if not tags or (len(tags) == 1 and tags[0] in ["잡학","세계","과학"]):
+        if any(w in t for w in ["사람","인물","할머니","할아버지","학생","선생","의사","경찰","소년","소녀"]):
+            tags.append("인물")
+    return tags[:2] if tags else ["잡학"]
 
 
 async def _ai_filter_posts(posts):
@@ -916,15 +958,19 @@ def _parse_rec(rec_str) -> int:
 # BoredPanda 섹션 — 8개 섹션 × 20개 = 160개 (AI 병렬 처리로 속도 확보)
 _BP_SECTIONS = [
     ("https://www.boredpanda.com/animals/",    "동물"),
-    ("https://www.boredpanda.com/funny/",      "반전"),
+    ("https://www.boredpanda.com/funny/",      "유머"),
     ("https://www.boredpanda.com/interesting/","잡학"),
     ("https://www.boredpanda.com/people/",     "인물"),
-    ("https://www.boredpanda.com/life/",       "잡학"),
+    ("https://www.boredpanda.com/life/",       "공감"),
     ("https://www.boredpanda.com/arts/",       "인물"),
-    ("https://www.boredpanda.com/nature/",     "동물"),
-    ("https://www.boredpanda.com/wholesome/",  "감동"),
+    ("https://www.boredpanda.com/nature/",     "야생"),
+    ("https://www.boredpanda.com/wholesome/",  "훈훈"),
+    ("https://www.boredpanda.com/cats/",       "고양이"),
+    ("https://www.boredpanda.com/dogs/",       "강아지"),
+    ("https://www.boredpanda.com/wtf/",        "충격"),
+    ("https://www.boredpanda.com/feels/",      "감동"),
 ]
-_BP_PER_SECTION = 20  # 8 × 20 = 160개 → AI 전배치 동시 실행 → ~15초
+_BP_PER_SECTION = 25  # 12 × 25 = 300개
 
 def _fetch_boredpanda_section(url, pre_cat):
     """BP 섹션 크롤링 — 영문 제목 그대로 반환 (번역은 AI에서 일괄처리)."""

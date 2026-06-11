@@ -69,10 +69,8 @@
     /* ── Feed filters ── */
     .feed-filters.hidden { display: none; }
     .filter-row {
-      display: flex; gap: 4px; padding: 6px 16px;
-      overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none;
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px;
     }
-    .filter-row::-webkit-scrollbar { display: none; }
     .filter-row + .filter-row { padding-top: 0; padding-bottom: 8px; }
     .f-btn {
       flex-shrink: 0; padding: 4px 12px; border-radius: 20px;
@@ -122,17 +120,34 @@
     .rec { font-size: 11px; color: #e87070; margin-left: auto; }
     .date-text { font-size: 11px; color: var(--muted); }
 
-    .cat-동물  { background:#0f2d10; color:#4ade80; }
-    .cat-반전  { background:#2d1a0f; color:#fb923c; }
-    .cat-의외  { background:#1e1a2e; color:#c084fc; }
-    .cat-감동  { background:#2d0f1a; color:#f9a8d4; }
-    .cat-유머  { background:#2d2200; color:#fbbf24; }
-    .cat-호기심{ background:#0f1e2d; color:#67e8f9; }
-    .cat-인물  { background:#1a0f2d; color:#a78bfa; }
-    .cat-공감  { background:#1f2a0f; color:#86efac; }
-    .cat-기타  { background:#1e1e1e; color:#888; }
-    /* 구버전 캐시 호환 */
-    .cat-잡학  { background:#0f1e2d; color:#38bdf8; }
+    /* 24태그 색상 체계 */
+    .cat-반전    { background:#2d1a0f; color:#fb923c; }
+    .cat-의외    { background:#1e1a2e; color:#c084fc; }
+    .cat-충격    { background:#2d0a0a; color:#f87171; }
+    .cat-레전드  { background:#2d2200; color:#fbbf24; }
+    .cat-동물    { background:#0f2d10; color:#4ade80; }
+    .cat-고양이  { background:#0f2a14; color:#a3e635; }
+    .cat-강아지  { background:#0a2020; color:#2dd4bf; }
+    .cat-야생    { background:#1a2a10; color:#86efac; }
+    .cat-잡학    { background:#0f1e2d; color:#67e8f9; }
+    .cat-역사    { background:#2a2000; color:#fcd34d; }
+    .cat-과학    { background:#0f1a2d; color:#60a5fa; }
+    .cat-세계    { background:#0a1e2a; color:#38bdf8; }
+    .cat-감동    { background:#2d0f1a; color:#f9a8d4; }
+    .cat-훈훈    { background:#2d1020; color:#fda4af; }
+    .cat-공감    { background:#1f2a0f; color:#bef264; }
+    .cat-힐링    { background:#0a2a20; color:#6ee7b7; }
+    .cat-유머    { background:#2a1f00; color:#fde68a; }
+    .cat-황당    { background:#2a0f14; color:#fb7185; }
+    .cat-인물    { background:#1a0f2d; color:#a78bfa; }
+    .cat-직장    { background:#1a1f28; color:#94a3b8; }
+    .cat-연애    { background:#2d0f28; color:#f472b6; }
+    .cat-육아    { background:#1a1028; color:#c4b5fd; }
+    .cat-음식    { background:#2a1800; color:#fdba74; }
+    .cat-여행    { background:#0a2020; color:#5eead4; }
+    /* 구버전 호환 */
+    .cat-호기심  { background:#0f1e2d; color:#67e8f9; }
+    .cat-기타    { background:#1e1e1e; color:#888; }
 
     .score-badge { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #1a2233; color: #60a5fa; }
     .score-badge.high { background: #2d1f00; color: #f59e0b; }
@@ -363,21 +378,28 @@
       <button class="f-btn active" data-cat="전체">전체</button>
       <button class="f-btn" data-cat="반전">🔄 반전</button>
       <button class="f-btn" data-cat="의외">😮 의외</button>
+      <button class="f-btn" data-cat="충격">😱 충격</button>
+      <button class="f-btn" data-cat="레전드">🏆 레전드</button>
       <button class="f-btn" data-cat="동물">🐾 동물</button>
+      <button class="f-btn" data-cat="고양이">🐱 고양이</button>
+      <button class="f-btn" data-cat="강아지">🐶 강아지</button>
+      <button class="f-btn" data-cat="야생">🦁 야생</button>
+      <button class="f-btn" data-cat="잡학">🤔 잡학</button>
+      <button class="f-btn" data-cat="역사">📜 역사</button>
+      <button class="f-btn" data-cat="과학">🔬 과학</button>
+      <button class="f-btn" data-cat="세계">🌍 세계</button>
       <button class="f-btn" data-cat="감동">🥹 감동</button>
-      <button class="f-btn" data-cat="유머">😂 유머</button>
-      <button class="f-btn" data-cat="호기심">🤔 호기심</button>
-      <button class="f-btn" data-cat="인물">👤 인물</button>
+      <button class="f-btn" data-cat="훈훈">☀️ 훈훈</button>
       <button class="f-btn" data-cat="공감">💬 공감</button>
-    </div>
-    <div class="filter-row" id="srcs">
-      <button class="f-btn src-active" data-src="전체">전체 소스</button>
-      <button class="f-btn" data-src="루리웹">루리웹</button>
-      <button class="f-btn" data-src="BP">BoredPanda</button>
-      <button class="f-btn" data-src="더쿠">더쿠</button>
-      <button class="f-btn" data-src="인스티즈">인스티즈</button>
-      <button class="f-btn" data-src="개드립">개드립</button>
-      <button class="f-btn" data-src="펨코">펨코</button>
+      <button class="f-btn" data-cat="힐링">🌿 힐링</button>
+      <button class="f-btn" data-cat="유머">😂 유머</button>
+      <button class="f-btn" data-cat="황당">🤯 황당</button>
+      <button class="f-btn" data-cat="인물">👤 인물</button>
+      <button class="f-btn" data-cat="직장">💼 직장</button>
+      <button class="f-btn" data-cat="연애">💕 연애</button>
+      <button class="f-btn" data-cat="육아">👶 육아</button>
+      <button class="f-btn" data-cat="음식">🍜 음식</button>
+      <button class="f-btn" data-cat="여행">✈️ 여행</button>
     </div>
     <div class="score-filter">
       <label>최소 점수</label>
@@ -654,12 +676,6 @@ document.getElementById('cats').addEventListener('click', e => {
       document.querySelector('#cats .f-btn[data-cat="전체"]').classList.add('active');
   }
   filterCards();
-});
-document.getElementById('srcs').addEventListener('click', e => {
-  const btn = e.target.closest('.f-btn');
-  if (!btn) return;
-  document.querySelectorAll('#srcs .f-btn').forEach(b => b.classList.remove('src-active'));
-  btn.classList.add('src-active'); _activeSrc = btn.dataset.src; filterCards();
 });
 function onScoreFilter(v) {
   _minScore = parseInt(v);
