@@ -192,8 +192,8 @@ async def _ensure_browser():
     return _browser
 
 
-def _run_async(coro):
-    return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=60)
+def _run_async(coro, timeout=60):
+    return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=timeout)
 
 
 def _parse_fmkorea_html(html, extra_filter=None):
@@ -978,7 +978,7 @@ _BP_SECTIONS = [
     ("https://www.boredpanda.com/travel/",       "여행"),
     ("https://www.boredpanda.com/food/",         "음식"),
 ]
-_BP_PER_SECTION = 20  # 20섹션 × 20 = 최대 400개
+_BP_PER_SECTION = 15  # 20섹션 × 15 = 최대 300개 (AI 번역 데드라인 내 처리율 확보)
 
 _BP_TITLE_PREFIX = "Permanent Link to "
 
@@ -1049,16 +1049,19 @@ async def _fetch_boredpanda():
 
 
 async def _fetch_boredpanda_classified():
-    """BP 크롤링 → AI 번역+채점. 전체 90초 하드 타임아웃."""
+    """BP 크롤링 → AI 번역+채점. 전체 58초 하드 타임아웃 (_run_async 60초 한도 내)."""
     try:
-        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=90.0)
+        return await asyncio.wait_for(_bp_fetch_and_score(), timeout=58.0)
     except asyncio.TimeoutError:
         return [], 0
 
 
+# AI 번역 단계 데드라인 — 초과분은 영문 제목 그대로 통과 (전멸 방지)
+_BP_AI_DEADLINE = 40.0
+
 async def _bp_fetch_and_score():
     try:
-        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=40.0)
+        posts = await asyncio.wait_for(_fetch_boredpanda(), timeout=15.0)
     except asyncio.TimeoutError:
         posts = []
     if not posts:
@@ -1073,10 +1076,16 @@ async def _bp_fetch_and_score():
     titles_en = [p["title"] for p in posts]
     chunks = [titles_en[i:i+BATCH] for i in range(0, len(titles_en), BATCH)]
 
-    # 웨이브 단위로 AI 배치 실행 — rate limit 시 전멸 방지
+    # 웨이브 단위 AI 배치 + 벽시계 데드라인 — 초과 시 나머지는 영문 통과
     all_results = []
+    deadline = time.monotonic() + _BP_AI_DEADLINE
     for w in range(0, len(chunks), WAVE):
         wave = chunks[w:w+WAVE]
+        if time.monotonic() >= deadline:
+            # 시간 초과 — 남은 청크는 영문 제목 그대로 (score None = 통과)
+            for chunk in wave:
+                all_results.extend([{"title_ko": t, "tags": ["잡학"], "score": None} for t in chunk])
+            continue
         try:
             results_list = await asyncio.gather(*[
                 loop.run_in_executor(None, lambda c=chunk: _translate_score_fn(c))
