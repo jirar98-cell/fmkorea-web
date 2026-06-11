@@ -137,12 +137,24 @@
     .score-badge { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #1a2233; color: #60a5fa; }
     .score-badge.high { background: #2d1f00; color: #f59e0b; }
 
+    /* hover 전용 버튼 (복사/🎬/✓) */
     .card-actions {
       position: absolute; top: 6px; right: 6px;
       display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s;
       z-index: 10;
     }
     .card:hover .card-actions { opacity: 1; }
+    /* 항상 보이는 ❤ 버튼 */
+    .like-btn-fixed {
+      margin-left: auto; flex-shrink: 0;
+      width: 28px; height: 22px; border-radius: 5px;
+      background: transparent; border: 1px solid #3a3a3a;
+      color: #888; font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.12s;
+    }
+    .like-btn-fixed:hover { border-color: #f87171; color: #f87171; background: rgba(127,29,29,0.3); }
+    .like-btn-fixed.liked { border-color: #f87171; color: #fca5a5; background: rgba(127,29,29,0.5); }
     .act-btn {
       width: 26px; height: 26px; border-radius: 6px;
       background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.12);
@@ -701,7 +713,6 @@ function makeCard(post) {
 
   card.innerHTML = `
     <div class="card-actions">
-      <button class="act-btn like-btn${liked?' liked':''}" title="즐겨찾기">${liked?'❤':'♡'}</button>
       <button class="act-btn copy-btn" title="제목 복사">📋</button>
       <button class="act-btn gen-btn" title="쇼츠 제목 생성">🎬</button>
       <button class="act-btn use-btn" title="사용 표시">✓</button>
@@ -715,11 +726,12 @@ function makeCard(post) {
         ${src ? `<span class="source-tag">${esc(src)}</span>` : ''}
         ${date ? `<span class="date-text">${esc(date)}</span>` : ''}
         ${rec ? `<span class="rec">${esc(rec)}</span>` : ''}
+        <button class="like-btn-fixed${liked?' liked':''}" title="즐겨찾기">${liked?'❤':'♡'}</button>
       </div>
     </div>`;
 
-  // ❤️ 즐겨찾기 + 자동 제목 생성
-  card.querySelector('.like-btn').addEventListener('click', e => {
+  // ❤️ 즐겨찾기 (footer 고정 버튼) + 자동 제목 생성
+  card.querySelector('.like-btn-fixed').addEventListener('click', e => {
     e.stopPropagation();
     const btn = e.currentTarget;
     const added = toggleLike(post);
@@ -760,7 +772,7 @@ function makeCard(post) {
     saveUsed(u);
   });
 
-  card.addEventListener('click', e => { if (e.target.closest('.act-btn')) return; window.open(post.url, '_blank'); });
+  card.addEventListener('click', e => { if (e.target.closest('.act-btn') || e.target.closest('.like-btn-fixed')) return; window.open(post.url, '_blank'); });
   io.observe(card);
   return card;
 }
