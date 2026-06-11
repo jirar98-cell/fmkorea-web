@@ -3,54 +3,49 @@
 > 새 세션 시작 시 이 파일 먼저 읽을 것.
 > "가자시발" = 바로 작업 시작. 인사 없이 현황 브리핑 후 다음 할 일 착수.
 
-## 마지막 세션: 2026-06-10
+## 마지막 세션: 2026-06-11
 
 ### 오늘 한 것 (전부)
 
-#### 인프라/성능
-- curl_cffi 전체 적용 — 루리웹/더쿠/인스티즈 Railway IP 차단 우회
-- **5페이지 병렬 스크래핑** — 루리웹/더쿠/인스티즈 각 5페이지 ThreadPoolExecutor 병렬
-- **AI 배치 3개 동시실행** — 순차→병렬 (속도 3배)
-- **BP 8섹션×20개=160개** — 전배치 동시실행, 타임아웃 90초
-- 점수 임계값 6→5, 추천 임계값 5→3
-- 이미지 WebP 380px, Cache-Control 1일
-- prewarm 빈결과 캐시 방지
-- CACHE_TTL 900→1800초
+#### AI 업그레이드 (영역전개)
+- **Groq llama-3.1-8b-instant → Anthropic claude-fable-5** 로 전면 교체
+  - `shorts_filter.py`: `openai.OpenAI` (Groq) → `anthropic.Anthropic`
+  - `app.py`: `api_learn_suggest`, `api_title_gen`도 모두 Anthropic으로 전환
+  - env 변수: `GROQ_API_KEY` → `ANTHROPIC_API_KEY`
+  - `requirements.txt`에 `anthropic` 추가
+- **프롬프트 개선**: 4점 기준 명시 ("어느 정도 흥미 있음 → 4점")
 
-#### 태그 시스템
-- **복수 태그 최대 2개** (반전+동물 동시 표시)
-- **8개 세분화 태그** — 반전/의외/동물/감동/유머/호기심/인물/공감
-- **다중선택 OR 필터**
-- 학습소 복수 태그 기반 통계
+#### 버그 수정
+- **개드립 메인 피드 누락 버그 수정** — `dogdrip_posts`가 `combined`에 없었음
+  - `api_feed()`에 `dogdrip_posts` 추가
+  - `total_filtered`에 `dogdrip_filtered` 추가
 
-#### 신기능
-- **🎬 쇼츠 제목 생성기** — 카드 hover → 🎬 → AI가 채널 스타일 제목 3개 생성+복사
-- **🔍 실시간 검색** — 헤더 🔍 또는 `/` 키
-- **정렬** — 스마트/점수↓/추천↓/랜덤
-- **키보드 단축키** — j/k 이동, o 열기, / 검색
-- **🤖 학습소 AI 방향 분석** — 즐겨찾기 기반 다음 소재 방향 3가지 추천
-- **개드립 소스** 추가 (5번째 소스)
-- **피드 카운터** — "N개 표시 중 (전체 M개)"
-- **30분 자동 새로고침**
-- **BP 썸네일 수정** — `post.img` 직접 URL → `/api/thumb` 스크래핑 스킵
+#### 필터 완화
+- **AI 점수 임계값 5→4** (api_feed, api_feed_source 두 곳 모두)
+
+#### 셀렉터 개선
+- **인스티즈**: `.issue-list a[href*='/pt/']`, `.pt_list a[href*='/pt/']`, `a[href*='/pt/']` 순서로 fallback 확장
+- **개드립**: `.ed-list a`, `article a.ed-link`, 7자리+ 숫자 경로 fallback 추가
 
 ### 현재 알려진 이슈
-1. **자료 수 아직 부족** — 5페이지×5소스 했는데도 생각보다 적게 나옴
-   - AI 채점 필터가 여전히 많이 거르는 중 (점수 5 미만 제외)
-   - 가능한 방향: 임계값 더 낮추기(4), 소스 추가, Groq 프롬프트 완화
-2. **인스티즈 0개 가능성** — 셀렉터 수정했지만 Railway 결과 미확인
-3. **개드립 실제 셀렉터 미확인** — dogdrip HTML 구조 모름, 0개일 수 있음
-4. **BP 썸네일** — 방금 수정 배포함. 결과 확인 필요
+
+1. **Railway `ANTHROPIC_API_KEY` 미설정** — **즉시 추가 필요**
+   - Railway 대시보드 → 서비스 → Variables → `ANTHROPIC_API_KEY` 추가
+   - 없으면 AI 채점 전체 비활성화됨 (피드는 뜨지만 점수 없음)
+2. **Fable 5 비용** — $10/$50 per MTok (input/output). 하루 5번 전체 새로고침 기준 약 $4~5/일
+   - 빈도 낮추려면 CACHE_TTL 더 늘리거나 haiku로 낮출 수 있음
+3. **개드립 셀렉터 미검증** — dogdrip.net 403이라 HTML 구조 미확인. 0개일 가능성 있음
+4. **인스티즈 셀렉터** — 기존보다 범위 넓혔지만 Railway 결과 확인 필요
 5. **fmkorea IP 차단** — 공유기 재시작으로 해결
 
 ### 다음에 해야 할 것 (우선순위)
-1. **자료 수 늘리기** — 가장 시급
-   - 옵션A: AI 점수 임계값 5→4로 더 낮추기
-   - 옵션B: Groq 프롬프트에서 채점 기준 완화 (좋은 소재 더 많이 통과)
-   - 옵션C: 소스 추가 (클리앙, 에펨코리아, 뽐뿌 등)
-   - 옵션D: 개드립/인스티즈 실제 HTML 구조 확인 후 셀렉터 수정
-2. **개드립 셀렉터 확인** — 실제로 긁히는지 확인
-3. **인스티즈 결과 확인** — Railway 로그
+
+1. **Railway 환경변수 `ANTHROPIC_API_KEY` 추가** ← 가장 급함
+2. Railway 로그 확인 — 개드립/인스티즈 실제로 몇 개 나오는지
+3. 자료 수 여전히 부족하면:
+   - 소스 추가 (클리앙, 뽐뿌 등)
+   - 개드립 Playwright fallback 추가 (현재 curl_cffi만)
+4. Fable 5 비용이 너무 나오면 `claude-haiku-4-5` 로 다운그레이드 옵션 있음
 
 ### 배포
 ```
@@ -59,6 +54,10 @@
 
 ### 주요 파일
 - `app.py` — Flask 백엔드, 모든 소스 크롤러
-- `shorts_filter.py` — Groq AI 채점 (8개 복수 태그)
+- `shorts_filter.py` — Anthropic claude-fable-5 채점 (8개 복수 태그)
 - `templates/index.html` — 프론트엔드 전체
 - `deploy.ps1` — 배포 스크립트
+
+### 환경변수 (Railway에 반드시 설정)
+- `ANTHROPIC_API_KEY` ← **이번 세션에서 Groq에서 교체됨**
+- `GROQ_API_KEY`는 더 이상 불필요

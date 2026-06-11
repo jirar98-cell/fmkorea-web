@@ -1,6 +1,6 @@
 """
 shorts_filter.py — @puppyd5g 채널 DNA 기반 소재 적합도 채점
-Anthropic claude-fable-5
+Groq llama-3.1-8b-instant (무료 API)
 
 태그 체계 (8개 복수 태그):
 - 반전: "이랬는데 알고보니" 예상을 뒤집는 구조
@@ -15,11 +15,14 @@ Anthropic claude-fable-5
 
 import json
 import os
-import anthropic
+from openai import OpenAI
 
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+client = OpenAI(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.environ["GROQ_API_KEY"],
+)
 
-MODEL = "claude-fable-5"
+MODEL = "llama-3.1-8b-instant"
 
 TAGS = ["반전", "의외", "동물", "감동", "유머", "호기심", "인물", "공감"]
 TAGS_SET = set(TAGS)
@@ -103,13 +106,15 @@ def score_batch(titles: list[str]) -> list[dict]:
     numbered = "\n".join(f"{i}:{t}" for i, t in enumerate(titles))
     fallback = [{"tags": ["호기심"], "category": "호기심", "score": 0}] * len(titles)
     try:
-        resp = client.messages.create(
+        resp = client.chat.completions.create(
             model=MODEL,
             max_tokens=min(len(titles) * 30 + 100, 2048),
-            system=_BATCH_PROMPT,
-            messages=[{"role": "user", "content": numbered}],
+            messages=[
+                {"role": "system", "content": _BATCH_PROMPT},
+                {"role": "user",   "content": numbered},
+            ],
         )
-        raw = (resp.content[0].text or "").strip()
+        raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw)
         result = [{"tags": ["호기심"], "category": "호기심", "score": 0}] * len(titles)
@@ -132,13 +137,15 @@ def translate_and_score_batch(titles_en: list[str]) -> list[dict]:
     numbered = "\n".join(f"{i}:{t}" for i, t in enumerate(titles_en))
     fallback = [{"title_ko": t, "tags": ["호기심"], "category": "호기심", "score": 0} for t in titles_en]
     try:
-        resp = client.messages.create(
+        resp = client.chat.completions.create(
             model=MODEL,
             max_tokens=min(len(titles_en) * 45 + 100, 2048),
-            system=_BP_COMBO_PROMPT,
-            messages=[{"role": "user", "content": numbered}],
+            messages=[
+                {"role": "system", "content": _BP_COMBO_PROMPT},
+                {"role": "user",   "content": numbered},
+            ],
         )
-        raw = (resp.content[0].text or "").strip()
+        raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw)
         result = [{"title_ko": t, "tags": ["호기심"], "category": "호기심", "score": 0} for t in titles_en]

@@ -116,7 +116,7 @@ _score_lock = threading.Lock()
 
 _translate_score_fn = None
 try:
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if os.environ.get("GROQ_API_KEY"):
         from shorts_filter import score_material as _score_fn  # type: ignore
         from shorts_filter import score_batch as _score_batch_fn  # type: ignore
         from shorts_filter import translate_and_score_batch as _translate_score_fn  # type: ignore
@@ -1308,15 +1308,15 @@ def api_score_available():
 def api_learn_suggest():
     """즐겨찾기 기반 다음 소재 방향 AI 분석."""
     if not _sf_available:
-        return jsonify({"error": "ANTHROPIC_API_KEY 필요"}), 503
+        return jsonify({"error": "GROQ_API_KEY 필요"}), 503
     data = request.get_json(silent=True) or {}
     tag_dist = data.get("tags", {})    # {"반전": 5, "동물": 3, ...}
     titles   = data.get("titles", [])[:10]
     if not tag_dist and not titles:
         return jsonify({"error": "데이터 없음"}), 400
     try:
-        import anthropic as _ant
-        _cli = _ant.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        from openai import OpenAI as _OAI
+        _cli = _OAI(base_url="https://api.groq.com/openai/v1", api_key=os.environ["GROQ_API_KEY"])
         prompt = f"""@puppyd5g 쇼츠 채널 ("퍼피독 — 굳이 궁금하지 않았던 이야기") 운영자의 즐겨찾기 패턴을 분석해서 다음 소재 탐색 방향을 알려줘.
 
 즐겨찾기 태그 분포: {json.dumps(tag_dist, ensure_ascii=False)}
@@ -1328,11 +1328,11 @@ def api_learn_suggest():
 {{"summary":"한 줄 성향 요약 (25자 이내)","directions":["다음에 찾으면 좋을 소재 방향 3가지 (각 20자)"],"avoid":["피하면 좋을 소재 1-2가지 (각 15자)"]}}
 
 JSON만. 다른 텍스트 금지."""
-        resp = _cli.messages.create(
-            model="claude-fable-5", max_tokens=400,
+        resp = _cli.chat.completions.create(
+            model="llama-3.1-8b-instant", max_tokens=400,
             messages=[{"role": "user", "content": prompt}]
         )
-        raw = (resp.content[0].text or "").strip()
+        raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json","").replace("```","").strip()
         return jsonify(json.loads(raw))
     except Exception as e:
@@ -1346,10 +1346,10 @@ def api_title_gen():
     if not title:
         return jsonify({"titles": []})
     if not _sf_available:
-        return jsonify({"error": "ANTHROPIC_API_KEY 필요"}), 503
+        return jsonify({"error": "GROQ_API_KEY 필요"}), 503
     try:
-        import anthropic as _ant
-        _cli = _ant.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        from openai import OpenAI as _OAI
+        _cli = _OAI(base_url="https://api.groq.com/openai/v1", api_key=os.environ["GROQ_API_KEY"])
         prompt = f"""유튜브 쇼츠 채널 @puppyd5g ("퍼피독 — 굳이 궁금하지 않았던 이야기") 스타일로 아래 소재의 쇼츠 제목을 3개 만들어라.
 
 채널 히트작 예시 (참고):
@@ -1368,12 +1368,13 @@ def api_title_gen():
 소재: {title}
 
 출력: ["제목1", "제목2", "제목3"] JSON 배열만. 다른 텍스트 금지."""
-        resp = _cli.messages.create(
-            model="claude-fable-5",
+        resp = _cli.chat.completions.create(
+            model="llama-3.1-8b-instant",
             max_tokens=200,
+            temperature=0.9,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = (resp.content[0].text or "").strip()
+        raw = (resp.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         titles = json.loads(raw)
         if isinstance(titles, list):
@@ -1389,7 +1390,7 @@ def api_score():
     url   = request.args.get("url",   "").strip()
     use_search = request.args.get("search", "0") == "1"
     if not _sf_available:
-        return jsonify({"error": "ANTHROPIC_API_KEY 미설정 — AI 채점 불가"}), 503
+        return jsonify({"error": "GROQ_API_KEY 미설정 — AI 채점 불가"}), 503
     if not title:
         return jsonify({"error": "title 필요"}), 400
     cache_key = f"{title}|{use_search}"
