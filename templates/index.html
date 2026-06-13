@@ -145,6 +145,12 @@
     .card.used { opacity: 0.35; }
     .card.top-score { border-color: #92400e; box-shadow: 0 0 0 1px #92400e, 0 0 12px rgba(245,158,11,0.25); }
     .card.liked-card { border-color: #7f1d1d; }
+    .card.pref-boosted { box-shadow: 0 0 0 1.5px #ec4899, 0 0 14px rgba(236,72,153,0.3); }
+    .card.pref-boosted::after {
+      content: '✨ 취향'; position: absolute; top: 8px; left: 8px; z-index: 6;
+      background: #ec4899; color: #fff; font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 7px; pointer-events: none;
+    }
 
     .thumb-wrap { width: 100%; aspect-ratio: 16/9; background: #1a1a1a; overflow: hidden; position: relative; }
     .thumb { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
@@ -466,6 +472,7 @@
       <button class="sort-btn" data-sort="score" onclick="setSort('score')">점수↓</button>
       <button class="sort-btn" data-sort="rec" onclick="setSort('rec')">추천↓</button>
       <button class="sort-btn" data-sort="random" onclick="setSort('random')">🎲 랜덤</button>
+      <button class="sort-btn pref-toggle" id="prefToggle" onclick="togglePref()" title="하트 누른 취향을 스마트 정렬에 반영 (하트 3개 이상부터 동작)">🤍 취향 반영</button>
       <span id="feedCount" style="margin-left:auto;font-size:11px;color:#444;"></span>
     </div>
   </div>
@@ -514,22 +521,53 @@ function saveLikes(arr){ try { localStorage.setItem(LIKES_KEY, JSON.stringify(ar
 
 function isLiked(url){ return getLikes().some(l => l.url === url); }
 
+/* ── 취향 반영 (Phase 1: 하트 → 스마트 정렬 부스트) ── */
+const PREF_KEY = 'puppyd_pref_on';   // 기본 OFF (localStorage 없으면 false)
+const PREF_W   = 3.5;                // 부스트 최대치 (score 1.75점 상당 — 9점이 3점 밑으로 절대 안 감)
+function getPrefOn() { try { return localStorage.getItem(PREF_KEY) === '1'; } catch { return false; } }
+function setPrefOn(on){ try { localStorage.setItem(PREF_KEY, on ? '1' : '0'); } catch {} }
+
+// 하트한 게시물의 태그 분포 → 정규화 친화도 맵. 하트 3개 미만이면 null (콜드스타트 가드 = 부스트 없음)
+function getLikeAffinity() {
+  const likes = getLikes();
+  if (likes.length < 3) return null;
+  const counts = {};
+  likes.forEach(l => {
+    const tags = Array.isArray(l.tags) && l.tags.length ? l.tags : [l.category || '기타'];
+    tags.forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+  });
+  const aff = {};
+  for (const t in counts) aff[t] = counts[t] / likes.length;  // 각 태그 [0,1]
+  return aff;
+}
+
+// 카드 부스트: 태그 친화도 합(1.0 cap) × PREF_W → 최대 PREF_W(3.5)
+function prefBoost(card, aff) {
+  if (!aff) return 0;
+  const tags = (card.dataset.tags || '').split(',').filter(Boolean);
+  let s = 0;
+  tags.forEach(t => { s += aff[t] || 0; });
+  return PREF_W * Math.min(1, s);
+}
+
 function toggleLike(post) {
   const likes = getLikes();
   const idx = likes.findIndex(l => l.url === post.url);
+  let added;
   if (idx >= 0) {
     likes.splice(idx, 1);
-    saveLikes(likes);
-    updateLikeBadge();
-    return false;
+    added = false;
+  } else {
+    const _tags = Array.isArray(post.tags) && post.tags.length ? post.tags : [post.category || '기타'];
+    likes.unshift({ url: post.url, title: post.title,
+      tags: _tags, category: _tags[0],
+      score: post.score, source: post.source, recommend: post.recommend, savedAt: Date.now() });
+    added = true;
   }
-  const _tags = Array.isArray(post.tags) && post.tags.length ? post.tags : [post.category || '기타'];
-  likes.unshift({ url: post.url, title: post.title,
-    tags: _tags, category: _tags[0],
-    score: post.score, source: post.source, recommend: post.recommend, savedAt: Date.now() });
   saveLikes(likes);
   updateLikeBadge();
-  return true;
+  if (getPrefOn()) applySort();   // 취향 ON이면 하트 변동 즉시 재정렬
+  return added;
 }
 
 function updateLikeBadge() {
@@ -616,7 +654,7 @@ function renderLearningView() {
     <div class="stats-row">
       <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">즐겨찾기</div></div>
       <div class="stat-card"><div class="stat-num">${avgScore}</div><div class="stat-label">평균 점수</div></div>
-      <div class="stat-card"><div class="stat-num">${topCat}</div><div class="stat-label">주 카테고리</div></div>
+      <div class="stat-card"><div class="stat-num">${topTag}</div><div class="stat-label">주 카테고리</div></div>
       <div class="stat-card"><div class="stat-num">${sorted.length}</div><div class="stat-label">카테고리 수</div></div>
     </div>
     <div class="insight-box">${insightText}</div>
@@ -1051,6 +1089,7 @@ async function load(force = false) {
 }
 
 updateLikeBadge();
+initPrefToggle();
 load();
 
 // ── 학습소 AI 소재 방향 분석 ──
@@ -1116,29 +1155,52 @@ function clearSearch() {
 let _sortMode = 'smart';
 function setSort(mode) {
   _sortMode = mode;
-  document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === mode));
+  // [data-sort] 한정 — 취향토글(#prefToggle)은 정렬모드가 아니므로 active 안 건드림
+  document.querySelectorAll('.sort-btn[data-sort]').forEach(b => b.classList.toggle('active', b.dataset.sort === mode));
   applySort();
 }
 function applySort() {
   const grid = document.getElementById('grid');
   const cards = Array.from(grid.querySelectorAll('.card'));
   const parseRec = s => { const n = parseInt((s||'').replace(/,/g,'')); return isNaN(n)?0:n; };
+  // 취향 부스트: 토글 ON + 스마트 정렬일 때만. 정렬 1회당 친화도 1번만 계산
+  const aff = (getPrefOn() && _sortMode === 'smart') ? getLikeAffinity() : null;
   cards.sort((a, b) => {
     const sa = parseInt(a.dataset.score||5), sb = parseInt(b.dataset.score||5);
     const ra = parseRec(a.dataset.rec), rb = parseRec(b.dataset.rec);
     if (_sortMode === 'score') return sb - sa;
     if (_sortMode === 'rec')   return rb - ra;
     if (_sortMode === 'random') return Math.random() - 0.5;
-    // smart: score×2 + log(rec+1)
-    const va = sa*2 + Math.log(ra+1), vb = sb*2 + Math.log(rb+1);
+    // smart: score×2 + log(rec+1) + 취향 부스트(최대 3.5)
+    const va = sa*2 + Math.log(ra+1) + prefBoost(a, aff);
+    const vb = sb*2 + Math.log(rb+1) + prefBoost(b, aff);
     return vb - va;
   });
+  // 취향 부스트 받은 카드에 ✨ 표시 (토글 OFF/콜드스타트/비스마트면 aff=null → 전부 해제)
+  cards.forEach(c => c.classList.toggle('pref-boosted', !!aff && prefBoost(c, aff) > 0));
   const frag = document.createDocumentFragment();
   cards.forEach(c => frag.appendChild(c));
   const placeholder = grid.querySelector('.state-wrap');
   grid.appendChild(frag);
   if (placeholder) grid.prepend(placeholder);
 }
+
+/* ── 취향 반영 토글 ── */
+function _syncPrefBtn(on) {
+  const btn = document.getElementById('prefToggle');
+  if (!btn) return;
+  btn.classList.toggle('active', on);
+  btn.textContent = on ? '❤️ 취향 ON' : '🤍 취향 반영';
+}
+function togglePref() {
+  const on = !getPrefOn();
+  setPrefOn(on);
+  _syncPrefBtn(on);
+  applySort();
+  if (on && getLikeAffinity() === null) toast('하트 3개 이상 누르면 정렬에 반영돼요');
+  else toast(on ? '내 취향 반영 ON' : '취향 반영 OFF');
+}
+function initPrefToggle() { _syncPrefBtn(getPrefOn()); }
 
 // ── 쇼츠 제목 생성 모달 ──
 let _currentGenTitle = '';
